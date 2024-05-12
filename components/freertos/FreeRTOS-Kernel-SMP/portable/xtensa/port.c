@@ -74,8 +74,13 @@ volatile unsigned port_xSchedulerRunning[portNUM_PROCESSORS] = {0}; // Indicates
 unsigned int port_interruptNesting[portNUM_PROCESSORS] = {0};  // Interrupt nesting level. Increased/decreased in portasm.c, _frxt_int_enter/_frxt_int_exit
 #if ( configNUMBER_OF_CORES > 1 )
 //FreeRTOS SMP Locks
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+portMUX_TYPE port_xUserTaskLock = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE port_xUserISRLock = portMUX_INITIALIZER_UNLOCKED;
+#else /* portUSING_GRANULAR_LOCKS == 1*/
 portMUX_TYPE port_xTaskLock = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE port_xISRLock = portMUX_INITIALIZER_UNLOCKED;
+#endif /* portUSING_GRANULAR_LOCKS == 1*/
 #endif /* configNUMBER_OF_CORES > 1 */
 
 /* ------------------------------------------------ IDF Compatibility --------------------------------------------------
@@ -96,7 +101,10 @@ Variables used by IDF critical sections only (SMP tracks critical nesting inside
 [refactor-todo] Figure out how IDF critical sections will be merged with SMP FreeRTOS critical sections
 */
 BaseType_t port_uxCriticalNestingIDF[portNUM_PROCESSORS] = {0};
-BaseType_t port_uxCriticalOldInterruptStateIDF[portNUM_PROCESSORS] = {0};
+static BaseType_t port_uxCriticalOldInterruptStateIDF[portNUM_PROCESSORS] = {0};
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+BaseType_t port_uxCriticalNestingGranular[portNUM_PROCESSORS] = {0};
+#endif /* portUSING_GRANULAR_LOCKS == 1*/
 
 /*
 *******************************************************************************
@@ -154,7 +162,16 @@ void vPortExitCriticalIDF(portMUX_TYPE *lock)
         port_uxCriticalNestingIDF[coreID] = nesting;
 
         //This is the last exit call, restore the saved interrupt level
-        if ( nesting == 0 ) {
+        //
+        // TODO: We cannot re-enable interrupts unless the Granular Locking
+        // critical nesting count and the IDF critical nesting count are both
+        // zero. Otherwise, it leads to a situation where interrupts are enabled
+        // but the critical section is still active.
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+        if ( nesting == 0 && port_uxCriticalNestingGranular[coreID] == 0 ) {
+#else
+       if (nesting == 0) {
+#endif
             XTOS_RESTORE_JUST_INTLEVEL((int) port_uxCriticalOldInterruptStateIDF[coreID]);
         }
     }
@@ -227,6 +244,131 @@ void vPortReleaseLock( portMUX_TYPE *lock )
 {
     spinlock_release( lock );
 }
+
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+
+// Data group locking
+
+extern BaseType_t xYieldPendings[ portNUM_PROCESSORS ];
+
+void vPortLockDataGroup( spinlock_t *pxTaskSpinlock, spinlock_t *pxISRSpinlock )
+{
+    portDISABLE_INTERRUPTS();
+
+    BaseType_t xCoreID = xPortGetCoreID();
+
+    /* Task spinlock is optional and is always taken first */
+    if( pxTaskSpinlock != NULL )
+    {
+        spinlock_acquire( pxTaskSpinlock, portMUX_NO_TIMEOUT);
+        port_uxCriticalNestingGranular[xCoreID]++;
+    }
+
+    /* ISR spinlock must always be provided */
+    spinlock_acquire( pxISRSpinlock, portMUX_NO_TIMEOUT);
+    port_uxCriticalNestingGranular[xCoreID]++;
+}
+
+UBaseType_t uxPortLockDataGroupFromISR( spinlock_t *pxISRSpinlock )
+{
+    UBaseType_t uxSavedInterruptStatus = 0;
+
+    uxSavedInterruptStatus = portSET_INTERRUPT_MASK_FROM_ISR();
+
+    spinlock_acquire( pxISRSpinlock, portMUX_NO_TIMEOUT);
+    port_uxCriticalNestingGranular[xPortGetCoreID()]++;
+
+    return uxSavedInterruptStatus;
+}
+
+void vPortUnlockDataGroup( spinlock_t *pxTaskSpinlock, spinlock_t *pxISRSpinlock )
+{
+    BaseType_t xCoreID = xPortGetCoreID();
+    BaseType_t xYieldCurrentTask;
+
+    configASSERT( port_uxCriticalNestingGranular[xCoreID] > 0U );
+
+    /* Get the xYieldPending stats inside the critical section. */
+    xYieldCurrentTask = xTaskUnlockCanYield();
+
+    /* ISR spinlock must always be provided */
+    spinlock_release( pxISRSpinlock);
+    port_uxCriticalNestingGranular[xCoreID]--;
+
+    /* Task spinlock is optional and is always taken first */
+    if( pxTaskSpinlock != NULL )
+    {
+        spinlock_release( pxTaskSpinlock);
+        port_uxCriticalNestingGranular[xCoreID]--;
+    }
+
+    assert(port_uxCriticalNestingGranular[xCoreID] >= 0);
+
+    // TODO: We cannot re-enable interrupts unless the Granular Locking
+    // critical nesting count and the IDF critical nesting count are both
+    // zero. Otherwise, it leads to a situation where interrupts are enabled
+    // but the critical section is still active.
+    if( port_uxCriticalNestingGranular[xCoreID] == 0 && port_uxCriticalNestingIDF[xCoreID] == 0 )
+    {
+        portENABLE_INTERRUPTS();
+
+        /* When a task yields in a critical section it just sets xYieldPending to
+         * true. So now that we have exited the critical section check if xYieldPending
+         * is true, and if so yield. */
+        if( xYieldCurrentTask != pdFALSE )
+        {
+            portYIELD();
+        }
+        else
+        {
+            mtCOVERAGE_TEST_MARKER();
+        }
+    }
+}
+
+void vPortUnlockDataGroupFromISR( UBaseType_t uxSavedInterruptStatus, spinlock_t *pxISRSpinlock )
+{
+    BaseType_t xCoreID = xPortGetCoreID();
+
+    spinlock_release( pxISRSpinlock);
+    port_uxCriticalNestingGranular[xCoreID]--;
+
+    assert(port_uxCriticalNestingGranular[xCoreID] >= 0);
+
+    // TODO: We cannot re-enable interrupts unless the Granular Locking
+    // critical nesting count and the IDF critical nesting count are both
+    // zero. Otherwise, it leads to a situation where interrupts are enabled
+    // but the critical section is still active.
+    if( port_uxCriticalNestingGranular[xCoreID] == 0 && port_uxCriticalNestingIDF[xCoreID] == 0 )
+    {
+        portCLEAR_INTERRUPT_MASK_FROM_ISR( uxSavedInterruptStatus );
+    }
+}
+
+// User critical sections
+
+void vPortEnterCriticalUser(void)
+{
+    vPortLockDataGroup(&port_xUserTaskLock, &port_xUserISRLock);
+}
+
+UBaseType_t uxPortEnterCriticalFromISRUser(void)
+{
+    return uxPortLockDataGroupFromISR(&port_xUserISRLock);
+}
+
+void vPortExitCriticalUser(void)
+{
+    vPortUnlockDataGroup(&port_xUserTaskLock, &port_xUserISRLock);
+}
+
+void vPortExitCriticalFromISRUser(UBaseType_t uxSavedInterruptStatus)
+{
+    vPortUnlockDataGroupFromISR(uxSavedInterruptStatus, &port_xUserISRLock);
+}
+
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
 #endif /* configNUMBER_OF_CORES > 1 */
 
 // ---------------------- Yielding -------------------------

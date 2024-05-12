@@ -501,7 +501,7 @@ PRIVILEGED_DATA static volatile BaseType_t xSchedulerRunningPerCore[ configNUMBE
     PRIVILEGED_DATA static volatile BaseType_t xSchedulerRunning = pdFALSE;
 #endif // ( ESP_PLATFORM == 1 ) && ( configNUM_CORES > 1 )
 PRIVILEGED_DATA static volatile TickType_t xPendedTicks = ( TickType_t ) 0U;
-PRIVILEGED_DATA static volatile BaseType_t xYieldPendings[ configNUMBER_OF_CORES ] = { pdFALSE };
+PRIVILEGED_DATA volatile BaseType_t xYieldPendings[ configNUMBER_OF_CORES ] = { pdFALSE };
 PRIVILEGED_DATA static volatile BaseType_t xNumOfOverflows = ( BaseType_t ) 0;
 PRIVILEGED_DATA static UBaseType_t uxTaskNumber = ( UBaseType_t ) 0U;
 PRIVILEGED_DATA static volatile TickType_t xNextTaskUnblockTime = ( TickType_t ) 0U; /* Initialised to portMAX_DELAY before the scheduler starts. */
@@ -535,6 +535,11 @@ PRIVILEGED_DATA static volatile configRUN_TIME_COUNTER_TYPE ulTotalRunTime[ conf
 
 #endif
 
+#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+    PRIVILEGED_DATA static portSPINLOCK_TYPE xTaskSpinlock = portINIT_KERNEL_TASK_SPINLOCK_STATIC;
+    PRIVILEGED_DATA static portSPINLOCK_TYPE xISRSpinlock = portINIT_KERNEL_ISR_SPINLOCK_STATIC;
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+
 /*-----------------------------------------------------------*/
 
 /* File private functions. --------------------------------*/
@@ -544,14 +549,14 @@ PRIVILEGED_DATA static volatile configRUN_TIME_COUNTER_TYPE ulTotalRunTime[ conf
  */
 static BaseType_t prvCreateIdleTasks( void );
 
-#if ( configNUMBER_OF_CORES > 1 )
+#if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) )
 
 /*
  * Checks to see if another task moved the current task out of the ready
  * list while it was waiting to enter a critical section and yields, if so.
  */
     static void prvCheckForRunStateChange( void );
-#endif /* #if ( configNUMBER_OF_CORES > 1 ) */
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
 #if ( configNUMBER_OF_CORES > 1 )
 
@@ -814,7 +819,7 @@ static void prvAddNewTaskToReadyList( TCB_t * pxNewTCB ) PRIVILEGED_FUNCTION;
 #endif /* #if ( ( configUSE_TRACE_FACILITY == 1 ) && ( configUSE_STATS_FORMATTING_FUNCTIONS > 0 ) ) */
 /*-----------------------------------------------------------*/
 
-#if ( configNUMBER_OF_CORES > 1 )
+#if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) )
     static void prvCheckForRunStateChange( void )
     {
         UBaseType_t uxPrevCriticalNesting;
@@ -874,7 +879,7 @@ static void prvAddNewTaskToReadyList( TCB_t * pxNewTCB ) PRIVILEGED_FUNCTION;
             }
         }
     }
-#endif /* #if ( configNUMBER_OF_CORES > 1 ) */
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
 /*-----------------------------------------------------------*/
 
@@ -3868,26 +3873,45 @@ void vTaskSuspendAll( void )
              * do not otherwise exhibit real time behaviour. */
             portSOFTWARE_BARRIER();
 
-            portGET_TASK_LOCK();
-
-            /* uxSchedulerSuspended is increased after prvCheckForRunStateChange. The
-             * purpose is to prevent altering the variable when fromISR APIs are readying
-             * it. */
-            if( uxSchedulerSuspended == 0U )
+            #if ( portUSING_GRANULAR_LOCKS == 1 )
             {
-                prvCheckForRunStateChange();
+                portGET_SPINLOCK( &xTaskSpinlock );
+                portGET_SPINLOCK( &xISRSpinlock );
+
+                /* Increment xPreemptionDisable to prevent preemption and also
+                 * track whether to yield in xTaskResumeAll(). */
+                pxCurrentTCBs[ portGET_CORE_ID() ]->xPreemptionDisable++;
+
+                /* The scheduler is suspended if uxSchedulerSuspended is non-zero. An increment
+                 * is used to allow calls to vTaskSuspendAll() to nest. */
+                ++uxSchedulerSuspended;
+
+                portRELEASE_SPINLOCK( &xISRSpinlock );
             }
-            else
+            #else /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
             {
-                mtCOVERAGE_TEST_MARKER();
+                portGET_TASK_LOCK();
+
+                /* uxSchedulerSuspended is increased after prvCheckForRunStateChange. The
+                 * purpose is to prevent altering the variable when fromISR APIs are readying
+                 * it. */
+                if( uxSchedulerSuspended == 0U )
+                {
+                    prvCheckForRunStateChange();
+                }
+                else
+                {
+                    mtCOVERAGE_TEST_MARKER();
+                }
+
+                portGET_ISR_LOCK();
+
+                /* The scheduler is suspended if uxSchedulerSuspended is non-zero. An increment
+                 * is used to allow calls to vTaskSuspendAll() to nest. */
+                ++uxSchedulerSuspended;
+                portRELEASE_ISR_LOCK();
             }
-
-            portGET_ISR_LOCK();
-
-            /* The scheduler is suspended if uxSchedulerSuspended is non-zero. An increment
-             * is used to allow calls to vTaskSuspendAll() to nest. */
-            ++uxSchedulerSuspended;
-            portRELEASE_ISR_LOCK();
+            #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
 
             portCLEAR_INTERRUPT_MASK( ulState );
         }
@@ -3993,7 +4017,24 @@ BaseType_t xTaskResumeAll( void )
             configASSERT( uxSchedulerSuspended != 0U );
 
             uxSchedulerSuspended = ( UBaseType_t ) ( uxSchedulerSuspended - 1U );
-            portRELEASE_TASK_LOCK();
+            #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+            {
+                configASSERT( pxCurrentTCBs[ portGET_CORE_ID() ]->xPreemptionDisable > 0 );
+
+                /* Decrement xPreemptionDisable. If 0, it means this we are not
+                 * in a nested suspension scenario, thus this function and yield
+                 * if necessary. */
+                pxCurrentTCBs[ portGET_CORE_ID() ]->xPreemptionDisable--;
+
+                /* Release the kernel's task spinlock that was held throughout
+                 * the kernel suspension. */
+                portRELEASE_SPINLOCK( &xTaskSpinlock );
+            }
+            #else /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+            {
+                portRELEASE_TASK_LOCK();
+            }
+            #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
             if( uxSchedulerSuspended == ( UBaseType_t ) 0U )
             {
@@ -6969,7 +7010,7 @@ static void prvResetNextTaskUnblockTime( void )
 #endif /* #if ( ( portCRITICAL_NESTING_IN_TCB == 1 ) && ( configNUMBER_OF_CORES == 1 ) ) */
 /*-----------------------------------------------------------*/
 
-#if ( configNUMBER_OF_CORES > 1 )
+#if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) )
 
     void vTaskEnterCritical( void )
     {
@@ -7015,11 +7056,10 @@ static void prvResetNextTaskUnblockTime( void )
         traceRETURN_vTaskEnterCritical();
     }
 
-#endif /* #if ( configNUMBER_OF_CORES > 1 ) */
-
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 /*-----------------------------------------------------------*/
 
-#if ( configNUMBER_OF_CORES > 1 )
+#if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) )
 
     UBaseType_t vTaskEnterCriticalFromISR( void )
     {
@@ -7048,7 +7088,7 @@ static void prvResetNextTaskUnblockTime( void )
         return uxSavedInterruptStatus;
     }
 
-#endif /* #if ( configNUMBER_OF_CORES > 1 ) */
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 /*-----------------------------------------------------------*/
 
 #if ( ( portCRITICAL_NESTING_IN_TCB == 1 ) && ( configNUMBER_OF_CORES == 1 ) )
@@ -7096,7 +7136,7 @@ static void prvResetNextTaskUnblockTime( void )
 #endif /* #if ( ( portCRITICAL_NESTING_IN_TCB == 1 ) && ( configNUMBER_OF_CORES == 1 ) ) */
 /*-----------------------------------------------------------*/
 
-#if ( configNUMBER_OF_CORES > 1 )
+#if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) )
 
     void vTaskExitCritical( void )
     {
@@ -7154,10 +7194,10 @@ static void prvResetNextTaskUnblockTime( void )
         traceRETURN_vTaskExitCritical();
     }
 
-#endif /* #if ( configNUMBER_OF_CORES > 1 ) */
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 /*-----------------------------------------------------------*/
 
-#if ( configNUMBER_OF_CORES > 1 )
+#if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) )
 
     void vTaskExitCriticalFromISR( UBaseType_t uxSavedInterruptStatus )
     {
@@ -7196,7 +7236,29 @@ static void prvResetNextTaskUnblockTime( void )
         traceRETURN_vTaskExitCriticalFromISR();
     }
 
-#endif /* #if ( configNUMBER_OF_CORES > 1 ) */
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 0 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+/*-----------------------------------------------------------*/
+
+#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+
+    BaseType_t xTaskUnlockCanYield( void )
+    {
+        BaseType_t xReturn;
+        BaseType_t xCoreID = portGET_CORE_ID();
+
+        if( ( xYieldPendings[ xCoreID ] == pdTRUE ) && ( uxSchedulerSuspended == pdFALSE ) && ( pxCurrentTCBs[ xCoreID ]->xPreemptionDisable == pdFALSE ) )
+        {
+            xReturn = pdTRUE;
+        }
+        else
+        {
+            xReturn = pdFALSE;
+        }
+
+        return xReturn;
+    }
+
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 /*-----------------------------------------------------------*/
 
 #if ( configUSE_STATS_FORMATTING_FUNCTIONS > 0 )

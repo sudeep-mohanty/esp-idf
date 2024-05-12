@@ -69,12 +69,20 @@ typedef uint32_t TickType_t;
  * - Required by FreeRTOS
  * ------------------------------------------------------------------------------------------------------------------ */
 
+#if configNUMBER_OF_CORES > 1
 #define portCRITICAL_NESTING_IN_TCB     0
+#else
+#define portCRITICAL_NESTING_IN_TCB     1
+#endif
 #define portSTACK_GROWTH                ( -1 )
 #define portTICK_PERIOD_MS              ( ( TickType_t ) 1000 / configTICK_RATE_HZ )
 #define portBYTE_ALIGNMENT              16    // Xtensa Windowed ABI requires the stack pointer to always be 16-byte aligned. See "isa_rm.pdf 8.1.1 Windowed Register Usage and Stack Layout"
 #define portNOP()                       XT_NOP()    //Todo: Check if XT_NOP exists
+#if configNUMBER_OF_CORES > 1
 #define portUSING_GRANULAR_LOCKS        1
+#else
+#define portUSING_GRANULAR_LOCKS        0
+#endif
 
 /* ---------------------------------------------- Forward Declarations -------------------------------------------------
  * - Forward declarations of all the port functions and macros need to implement the FreeRTOS porting interface
@@ -114,10 +122,36 @@ These are always called with interrupts already disabled. We simply need to get/
 */
 extern portMUX_TYPE port_xTaskLock;
 extern portMUX_TYPE port_xISRLock;
-
 void vPortTakeLock( portMUX_TYPE *lock );
 void vPortReleaseLock( portMUX_TYPE *lock );
+
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+// Data group locking
+void vPortLockDataGroup( spinlock_t *pxTaskSpinlock, spinlock_t *pxISRSpinlock );
+UBaseType_t uxPortLockDataGroupFromISR( spinlock_t *pxISRSpinlock );
+void vPortUnlockDataGroup( spinlock_t *pxTaskSpinlock, spinlock_t *pxISRSpinlock );
+void vPortUnlockDataGroupFromISR( UBaseType_t uxSavedInterruptStatus, spinlock_t *pxISRSpinlock );
+// User critical sections
+void vPortEnterCriticalUser(void);
+UBaseType_t uxPortEnterCriticalFromISRUser(void);
+void vPortExitCriticalUser(void);
+void vPortExitCriticalFromISRUser(UBaseType_t uxSavedInterruptStatus);
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
 #endif /* configNUMBER_OF_CORES > 1 */
+
+#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( portCRITICAL_NESTING_IN_TCB == 0 ) )
+extern BaseType_t port_uxCriticalNestingGranular[portNUM_PROCESSORS];
+#define portGET_CRITICAL_NESTING_COUNT()    (port_uxCriticalNestingGranular[xPortGetCoreID()])
+#define portINCREMENT_CRITICAL_NESTING_COUNT()    (port_uxCriticalNestingGranular[xPortGetCoreID()]++)
+#define portDECREMENT_CRITICAL_NESTING_COUNT()    (port_uxCriticalNestingGranular[xPortGetCoreID()]--)
+#else
+extern BaseType_t port_uxCriticalNestingIDF[portNUM_PROCESSORS];
+#define portGET_CRITICAL_NESTING_COUNT()    (port_uxCriticalNestingIDF[xPortGetCoreID()])
+#define portSET_CRITICAL_NESTING_COUNT( x )    (port_uxCriticalNestingIDF[xPortGetCoreID()] = x )
+#define portINCREMENT_CRITICAL_NESTING_COUNT()    (port_uxCriticalNestingIDF[xPortGetCoreID()]++)
+#define portDECREMENT_CRITICAL_NESTING_COUNT()    (port_uxCriticalNestingIDF[xPortGetCoreID()]--)
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( portCRITICAL_NESTING_IN_TCB == 0 ) ) */
 
 // ---------------------- Yielding -------------------------
 
@@ -206,10 +240,27 @@ Note: XTOS_RESTORE_INTLEVEL() will overwrite entire PS register on XEA2. So we n
 #endif /* configNUMBER_OF_CORES > 1 */
 
 //Critical sections used by FreeRTOS SMP
+#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && !( CONFIG_FREERTOS_UNICORE ) )
+// Data group locking
+#define portLOCK_DATA_GROUP( pxTaskSpinlock, pxISRSpinlock )        vPortLockDataGroup( pxTaskSpinlock, pxISRSpinlock )
+#define portLOCK_DATA_GROUP_FROM_ISR( pxISRSpinlock )               uxPortLockDataGroupFromISR( pxISRSpinlock )
+#define portUNLOCK_DATA_GROUP( pxTaskSpinlock, pxISRSpinlock )      vPortUnlockDataGroup( pxTaskSpinlock, pxISRSpinlock )
+#define portUNLOCK_DATA_GROUP_FROM_ISR( x, pxISRSpinlock )          vPortUnlockDataGroupFromISR( x, pxISRSpinlock )
+// User critical section
+#define portENTER_CRITICAL_SMP()                    vPortEnterCriticalUser()
+#define portENTER_CRITICAL_FROM_ISR()               uxPortEnterCriticalFromISRUser()
+#define portEXIT_CRITICAL_SMP()                     vPortExitCriticalUser()
+#define portEXIT_CRITICAL_FROM_ISR(x)               vPortExitCriticalFromISRUser(x)
+#else /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && !( CONFIG_FREERTOS_UNICORE ) ) */
 extern void vTaskEnterCritical( void );
 extern void vTaskExitCritical( void );
-#define portENTER_CRITICAL_SMP()                    vTaskEnterCritical();
-#define portEXIT_CRITICAL_SMP()                     vTaskExitCritical();
+#define portENTER_CRITICAL_SMP()                    vTaskEnterCritical()
+#define portEXIT_CRITICAL_SMP()                     vTaskExitCritical()
+extern UBaseType_t vTaskEnterCriticalFromISR( void );
+extern void vTaskExitCriticalFromISR( UBaseType_t uxSavedInterruptStatus );
+#define portENTER_CRITICAL_FROM_ISR() vTaskEnterCriticalFromISR()
+#define portEXIT_CRITICAL_FROM_ISR(x) vTaskExitCriticalFromISR(x)
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && !( CONFIG_FREERTOS_UNICORE ) ) */
 
 #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && !( CONFIG_FREERTOS_UNICORE ) )
     #define portGET_SPINLOCK( pxSpinlock )                      vPortTakeLock( pxSpinlock )
@@ -234,11 +285,6 @@ extern void vTaskExitCritical( void );
 #define portENTER_CRITICAL(...)                     CHOOSE_MACRO_VA_ARG(portENTER_CRITICAL_IDF, portENTER_CRITICAL_SMP, ##__VA_ARGS__)(__VA_ARGS__)
 #define portEXIT_CRITICAL(...)                      CHOOSE_MACRO_VA_ARG(portEXIT_CRITICAL_IDF, portEXIT_CRITICAL_SMP, ##__VA_ARGS__)(__VA_ARGS__)
 #endif
-
-extern UBaseType_t vTaskEnterCriticalFromISR( void );
-extern void vTaskExitCriticalFromISR( UBaseType_t uxSavedInterruptStatus );
-#define portENTER_CRITICAL_FROM_ISR() vTaskEnterCriticalFromISR()
-#define portEXIT_CRITICAL_FROM_ISR(x) vTaskExitCriticalFromISR(x)
 
 // ---------------------- Yielding -------------------------
 
