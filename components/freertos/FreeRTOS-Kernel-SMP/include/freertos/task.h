@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2025 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -57,30 +57,33 @@
  * The tskKERNEL_VERSION_MAJOR, tskKERNEL_VERSION_MINOR, tskKERNEL_VERSION_BUILD
  * values will reflect the last released version number.
  */
-#define tskKERNEL_VERSION_NUMBER       "V11.1.0"
-#define tskKERNEL_VERSION_MAJOR        11
-#define tskKERNEL_VERSION_MINOR        1
-#define tskKERNEL_VERSION_BUILD        0
+#define tskKERNEL_VERSION_NUMBER                      "V11.1.0+"
+#define tskKERNEL_VERSION_MAJOR                       11
+#define tskKERNEL_VERSION_MINOR                       1
+#define tskKERNEL_VERSION_BUILD                       0
 
 /* MPU region parameters passed in ulParameters
  * of MemoryRegion_t struct. */
-#define tskMPU_REGION_READ_ONLY        ( 1U << 0U )
-#define tskMPU_REGION_READ_WRITE       ( 1U << 1U )
-#define tskMPU_REGION_EXECUTE_NEVER    ( 1U << 2U )
-#define tskMPU_REGION_NORMAL_MEMORY    ( 1U << 3U )
-#define tskMPU_REGION_DEVICE_MEMORY    ( 1U << 4U )
+#define tskMPU_REGION_READ_ONLY                       ( 1U << 0U )
+#define tskMPU_REGION_READ_WRITE                      ( 1U << 1U )
+#define tskMPU_REGION_EXECUTE_NEVER                   ( 1U << 2U )
+#define tskMPU_REGION_NORMAL_MEMORY                   ( 1U << 3U )
+#define tskMPU_REGION_DEVICE_MEMORY                   ( 1U << 4U )
+#if defined( portARMV8M_MINOR_VERSION ) && ( portARMV8M_MINOR_VERSION >= 1 )
+    #define tskMPU_REGION_PRIVILEGED_EXECUTE_NEVER    ( 1U << 5U )
+#endif /* portARMV8M_MINOR_VERSION >= 1 */
 
 /* MPU region permissions stored in MPU settings to
  * authorize access requests. */
-#define tskMPU_READ_PERMISSION         ( 1U << 0U )
-#define tskMPU_WRITE_PERMISSION        ( 1U << 1U )
+#define tskMPU_READ_PERMISSION        ( 1U << 0U )
+#define tskMPU_WRITE_PERMISSION       ( 1U << 1U )
 
 /* The direct to task notification feature used to have only a single notification
  * per task.  Now there is an array of notifications per task that is dimensioned by
  * configTASK_NOTIFICATION_ARRAY_ENTRIES.  For backward compatibility, any use of the
  * original direct to task notification defaults to using the first index in the
  * array. */
-#define tskDEFAULT_INDEX_TO_NOTIFY     ( 0 )
+#define tskDEFAULT_INDEX_TO_NOTIFY    ( 0 )
 
 /**
  * task. h
@@ -165,7 +168,7 @@ typedef struct xTASK_STATUS
 {
     TaskHandle_t xHandle;                         /* The handle of the task to which the rest of the information in the structure relates. */
     const char * pcTaskName;                      /* A pointer to the task's name.  This value will be invalid if the task was deleted since the structure was populated! */
-    UBaseType_t xTaskNumber;                      /* A number unique to the task. */
+    UBaseType_t xTaskNumber;                      /* A number unique to the task. Note that this is not the task number that may be modified using vTaskSetTaskNumber() and uxTaskGetTaskNumber(), but a separate TCB-specific and unique identifier automatically assigned on task generation. */
     eTaskState eCurrentState;                     /* The state in which the task existed when the structure was populated. */
     UBaseType_t uxCurrentPriority;                /* The priority at which the task was running (may be inherited) when the structure was populated. */
     UBaseType_t uxBasePriority;                   /* The priority to which the task will return if the task's current priority has been inherited to avoid unbounded priority inversion when obtaining a mutex.  Only valid if configUSE_MUTEXES is defined as 1 in FreeRTOSConfig.h. */
@@ -214,7 +217,7 @@ typedef enum
  * \defgroup taskYIELD taskYIELD
  * \ingroup SchedulerControl
  */
-#define taskYIELD()                                                 portYIELD()
+#define taskYIELD()                          portYIELD()
 
 /**
  * task. h
@@ -228,19 +231,12 @@ typedef enum
  * \defgroup taskENTER_CRITICAL taskENTER_CRITICAL
  * \ingroup SchedulerControl
  */
-#define taskENTER_CRITICAL()                                        portENTER_CRITICAL()
+#define taskENTER_CRITICAL()                 portENTER_CRITICAL()
 #if ( configNUMBER_OF_CORES == 1 )
-    #define taskENTER_CRITICAL_FROM_ISR()                           portSET_INTERRUPT_MASK_FROM_ISR()
+    #define taskENTER_CRITICAL_FROM_ISR()    portSET_INTERRUPT_MASK_FROM_ISR()
 #else
-    #define taskENTER_CRITICAL_FROM_ISR()                           portENTER_CRITICAL_FROM_ISR()
+    #define taskENTER_CRITICAL_FROM_ISR()    portENTER_CRITICAL_FROM_ISR()
 #endif
-#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-    #define taskLOCK_DATA_GROUP( pxTaskSpinlock, pxISRSpinlock )    portLOCK_DATA_GROUP( ( portSPINLOCK_TYPE * ) pxTaskSpinlock, ( portSPINLOCK_TYPE * ) pxISRSpinlock )
-    #define taskLOCK_DATA_GROUP_FROM_ISR( pxISRSpinlock )           portLOCK_DATA_GROUP_FROM_ISR( pxISRSpinlock )
-#else /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
-    #define taskLOCK_DATA_GROUP( pxTaskSpinlock, pxISRSpinlock )    taskENTER_CRITICAL()
-    #define taskLOCK_DATA_GROUP_FROM_ISR( pxISRSpinlock )           taskENTER_CRITICAL_FROM_ISR()
-#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
 /**
  * task. h
@@ -254,19 +250,12 @@ typedef enum
  * \defgroup taskEXIT_CRITICAL taskEXIT_CRITICAL
  * \ingroup SchedulerControl
  */
-#define taskEXIT_CRITICAL()                                           portEXIT_CRITICAL()
+#define taskEXIT_CRITICAL()                    portEXIT_CRITICAL()
 #if ( configNUMBER_OF_CORES == 1 )
-    #define taskEXIT_CRITICAL_FROM_ISR( x )                           portCLEAR_INTERRUPT_MASK_FROM_ISR( x )
+    #define taskEXIT_CRITICAL_FROM_ISR( x )    portCLEAR_INTERRUPT_MASK_FROM_ISR( x )
 #else
-    #define taskEXIT_CRITICAL_FROM_ISR( x )                           portEXIT_CRITICAL_FROM_ISR( x )
+    #define taskEXIT_CRITICAL_FROM_ISR( x )    portEXIT_CRITICAL_FROM_ISR( x )
 #endif
-#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-    #define taskUNLOCK_DATA_GROUP( pxTaskSpinlock, pxISRSpinlock )    portUNLOCK_DATA_GROUP( ( portSPINLOCK_TYPE * ) pxTaskSpinlock, ( portSPINLOCK_TYPE * ) pxISRSpinlock )
-    #define taskUNLOCK_DATA_GROUP_FROM_ISR( x, pxISRSpinlock )        portUNLOCK_DATA_GROUP_FROM_ISR( x, pxISRSpinlock )
-#else /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
-    #define taskUNLOCK_DATA_GROUP( pxTaskSpinlock, pxISRSpinlock )    taskEXIT_CRITICAL()
-    #define taskUNLOCK_DATA_GROUP_FROM_ISR( x, pxISRSpinlock )        taskEXIT_CRITICAL_FROM_ISR( x )
-#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
 /**
  * task. h
@@ -2214,8 +2203,8 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * Lists all the current tasks, along with their current state and stack
  * usage high water mark.
  *
- * Tasks are reported as blocked ('B'), ready ('R'), deleted ('D') or
- * suspended ('S').
+ * Tasks are reported as running ('X'), blocked ('B'), ready ('R'), deleted ('D')
+ * or suspended ('S').
  *
  * PLEASE NOTE:
  *
@@ -2223,8 +2212,16 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * demo applications.  Do not consider it to be part of the scheduler.
  *
  * vTaskListTasks() calls uxTaskGetSystemState(), then formats part of the
- * uxTaskGetSystemState() output into a human readable table that displays task:
- * names, states, priority, stack usage and task number.
+ * uxTaskGetSystemState() output into a human readable table that displays task
+ * information in the following format:
+ * Task Name, Task State, Task Priority, Task Stack High Watermak, Task Number.
+ *
+ * The following is a sample output:
+ * Task A       X       2           67           2
+ * Task B       R       1           67           3
+ * IDLE         R       0           67           5
+ * Tmr Svc      B       6           137          6
+ *
  * Stack usage specified as the number of unused StackType_t words stack can hold
  * on top of stack - not the number of bytes.
  *
@@ -2275,8 +2272,8 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * Lists all the current tasks, along with their current state and stack
  * usage high water mark.
  *
- * Tasks are reported as blocked ('B'), ready ('R'), deleted ('D') or
- * suspended ('S').
+ * Tasks are reported as running ('X'), blocked ('B'), ready ('R'), deleted ('D')
+ * or suspended ('S').
  *
  * PLEASE NOTE:
  *
@@ -2284,8 +2281,16 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * demo applications.  Do not consider it to be part of the scheduler.
  *
  * vTaskList() calls uxTaskGetSystemState(), then formats part of the
- * uxTaskGetSystemState() output into a human readable table that displays task:
- * names, states, priority, stack usage and task number.
+ * uxTaskGetSystemState() output into a human readable table that displays task
+ * information in the following format:
+ * Task Name, Task State, Task Priority, Task Stack High Watermak, Task Number.
+ *
+ * The following is a sample output:
+ * Task A       X       2           67           2
+ * Task B       R       1           67           3
+ * IDLE         R       0           67           5
+ * Tmr Svc      B       6           137          6
+ *
  * Stack usage specified as the number of unused StackType_t words stack can hold
  * on top of stack - not the number of bytes.
  *
@@ -3718,7 +3723,7 @@ void vTaskInternalSetTimeOutState( TimeOut_t * const pxTimeOut ) PRIVILEGED_FUNC
  * It should be used in the implementation of portENTER_CRITICAL if port is running a
  * multiple core FreeRTOS.
  */
-#if !( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+#if ( ( portCRITICAL_NESTING_IN_TCB == 1 ) || ( configNUMBER_OF_CORES > 1 ) )
     void vTaskEnterCritical( void );
 #endif
 
@@ -3730,7 +3735,7 @@ void vTaskInternalSetTimeOutState( TimeOut_t * const pxTimeOut ) PRIVILEGED_FUNC
  * It should be used in the implementation of portEXIT_CRITICAL if port is running a
  * multiple core FreeRTOS.
  */
-#if !( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+#if ( ( portCRITICAL_NESTING_IN_TCB == 1 ) || ( configNUMBER_OF_CORES > 1 ) )
     void vTaskExitCritical( void );
 #endif
 
@@ -3740,7 +3745,7 @@ void vTaskInternalSetTimeOutState( TimeOut_t * const pxTimeOut ) PRIVILEGED_FUNC
  * should be used in the implementation of portENTER_CRITICAL_FROM_ISR if port is
  * running a multiple core FreeRTOS.
  */
-#if !( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+#if ( configNUMBER_OF_CORES > 1 )
     UBaseType_t vTaskEnterCriticalFromISR( void );
 #endif
 
@@ -3750,12 +3755,12 @@ void vTaskInternalSetTimeOutState( TimeOut_t * const pxTimeOut ) PRIVILEGED_FUNC
  * should be used in the implementation of portEXIT_CRITICAL_FROM_ISR if port is
  * running a multiple core FreeRTOS.
  */
-#if !( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+#if ( configNUMBER_OF_CORES > 1 )
     void vTaskExitCriticalFromISR( UBaseType_t uxSavedInterruptStatus );
 #endif
 
 /*
- * Checks whether a yield is required after taskUNLOCK_DATA_GROUP() returns.
+ * Checks whether a yield is required after portUNLOCK_DATA_GROUP() returns.
  * To be called while data group is locked.
  */
 #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
