@@ -455,7 +455,7 @@
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) || ( configNUMBER_OF_CORES == 1 ) )
         #define portRELEASE_TASK_LOCK()
     #else
-        #error portRELEASE_TASK_LOCK is required in SMP
+        #error portRELEASE_TASK_LOCK is required in SMP without granular locking feature enabled
     #endif
 
 #endif /* portRELEASE_TASK_LOCK */
@@ -465,7 +465,7 @@
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) || ( configNUMBER_OF_CORES == 1 ) )
         #define portGET_TASK_LOCK()
     #else
-        #error portGET_TASK_LOCK is required in SMP
+        #error portGET_TASK_LOCK is required in SMP without granular locking feature enabled
     #endif
 
 #endif /* portGET_TASK_LOCK */
@@ -475,7 +475,7 @@
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) || ( configNUMBER_OF_CORES == 1 ) )
         #define portRELEASE_ISR_LOCK()
     #else
-        #error portRELEASE_ISR_LOCK is required in SMP
+        #error portRELEASE_ISR_LOCK is required in SMP without granular locking feature enabled
     #endif
 
 #endif /* portRELEASE_ISR_LOCK */
@@ -485,7 +485,7 @@
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) || ( configNUMBER_OF_CORES == 1 ) )
         #define portGET_ISR_LOCK()
     #else
-        #error portGET_ISR_LOCK is required in SMP
+        #error portGET_ISR_LOCK is required in SMP without granular locking feature enabled
     #endif
 
 #endif /* portGET_ISR_LOCK */
@@ -493,7 +493,7 @@
 #ifndef portRELEASE_SPINLOCK
 
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portRELEASE_SPINLOCK is required for granular locking
+        #error portRELEASE_SPINLOCK is required for SMP with granular locking feature enabled
     #endif
 
 #endif
@@ -501,7 +501,7 @@
 #ifndef portGET_SPINLOCK
 
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portGET_SPINLOCK is required for granular locking
+        #error portGET_SPINLOCK is required for SMP with granular locking feature enabled
     #endif
 
 #endif
@@ -538,82 +538,18 @@
 
 #endif
 
-#ifndef portINIT_EVENT_GROUP_TASK_SPINLOCK
+#ifndef portINIT_SPINLOCK
 
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_EVENT_GROUP_TASK_SPINLOCK is required for granular locking
+        #error portINIT_SPINLOCK is required for SMP with granular locking feature enabled
     #endif
 
 #endif
 
-#ifndef portINIT_EVENT_GROUP_ISR_SPINLOCK
+#ifndef portINIT_SPINLOCK_STATIC
 
     #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_EVENT_GROUP_ISR_SPINLOCK is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_QUEUE_TASK_SPINLOCK
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_QUEUE_TASK_SPINLOCK is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_QUEUE_ISR_SPINLOCK
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_QUEUE_ISR_SPINLOCK is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_STREAM_BUFFER_TASK_SPINLOCK
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_STREAM_BUFFER_TASK_SPINLOCK is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_STREAM_BUFFER_ISR_SPINLOCK
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_STREAM_BUFFER_ISR_SPINLOCK is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_KERNEL_TASK_SPINLOCK_STATIC
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_KERNEL_TASK_SPINLOCK_STATIC is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_KERNEL_ISR_SPINLOCK_STATIC
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_KERNEL_ISR_SPINLOCK_STATIC is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_TIMERS_TASK_SPINLOCK_STATIC
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_TIMERS_TASK_SPINLOCK_STATIC is required for granular locking
-    #endif
-
-#endif
-
-#ifndef portINIT_TIMERS_ISR_SPINLOCK_STATIC
-
-    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
-        #error portINIT_TIMERS_ISR_SPINLOCK_STATIC is required for granular locking
+        #error portINIT_SPINLOCK_STATIC is required for SMP with granular locking feature enabled
     #endif
 
 #endif
@@ -3019,7 +2955,7 @@
     #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
     #define portTICK_TYPE_SET_INTERRUPT_MASK_FROM_ISR()         portSET_INTERRUPT_MASK_FROM_ISR()
     #define portTICK_TYPE_CLEAR_INTERRUPT_MASK_FROM_ISR( x )    portCLEAR_INTERRUPT_MASK_FROM_ISR( ( x ) )
-#else
+#else /* if ( portTICK_TYPE_IS_ATOMIC == 0 ) */
 
 /* The tick type can be read atomically, so critical sections used when the
  * tick count is returned can be defined away. */
