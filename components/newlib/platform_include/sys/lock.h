@@ -23,13 +23,13 @@ extern "C" {
  */
 struct __lock {
 #if (CONFIG_FREERTOS_USE_LIST_DATA_INTEGRITY_CHECK_BYTES && CONFIG_FREERTOS_USE_TRACE_FACILITY)
-    int reserved[29];
+    int reserved[29 + 16];
 #elif (CONFIG_FREERTOS_USE_LIST_DATA_INTEGRITY_CHECK_BYTES && !CONFIG_FREERTOS_USE_TRACE_FACILITY)
-    int reserved[27];
+    int reserved[27 + 16];
 #elif (!CONFIG_FREERTOS_USE_LIST_DATA_INTEGRITY_CHECK_BYTES && CONFIG_FREERTOS_USE_TRACE_FACILITY)
-    int reserved[23];
+    int reserved[23 + 16];
 #else
-    int reserved[21];
+    int reserved[21 + 16];
 #endif /* #if (CONFIG_FREERTOS_USE_LIST_DATA_INTEGRITY_CHECK_BYTES && CONFIG_FREERTOS_USE_TRACE_FACILITY) */
 };
 
