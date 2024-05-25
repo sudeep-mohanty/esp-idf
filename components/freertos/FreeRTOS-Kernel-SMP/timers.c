@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2025 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -83,6 +83,17 @@
     #define tmrSTATUS_IS_STATICALLY_ALLOCATED    ( 0x02U )
     #define tmrSTATUS_IS_AUTORELOAD              ( 0x04U )
 
+/*
+ * Macros to mark the start and end of a critical code region.
+ */
+    #if ( portUSING_GRANULAR_LOCKS == 1 )
+        #define tmrENTER_CRITICAL()    vTimerEnterCritical()
+        #define tmrEXIT_CRITICAL()     vTimerExitCritical()
+    #else /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+        #define tmrENTER_CRITICAL()    taskENTER_CRITICAL()
+        #define tmrEXIT_CRITICAL()     taskEXIT_CRITICAL()
+    #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
 /* The definition of the timers themselves. */
     typedef struct tmrTimerControl                                               /* The old naming convention is used to prevent breaking kernel aware debuggers. */
     {
@@ -153,6 +164,25 @@
     PRIVILEGED_DATA static QueueHandle_t xTimerQueue = NULL;
     PRIVILEGED_DATA static TaskHandle_t xTimerTaskHandle = NULL;
 
+    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+        PRIVILEGED_DATA static portSPINLOCK_TYPE xTaskSpinlock = portINIT_SPINLOCK_STATIC;
+        PRIVILEGED_DATA static portSPINLOCK_TYPE xISRSpinlock = portINIT_SPINLOCK_STATIC;
+    #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+
+    #if ( portUSING_GRANULAR_LOCKS == 1 )
+
+/*
+ * Enters a critical section for timers. Disables interrupts and takes
+ * both task and ISR spinlocks to ensure thread safety.
+ */
+        static void vTimerEnterCritical( void ) PRIVILEGED_FUNCTION;
+
+/*
+ * Exits a critical section for timers. Releases spinlocks in reverse order
+ * and conditionally re-enables interrupts and yields if required.
+ */
+        static void vTimerExitCritical( void ) PRIVILEGED_FUNCTION;
+    #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
 /*-----------------------------------------------------------*/
 
 /*
@@ -580,7 +610,7 @@
         traceENTER_vTimerSetReloadMode( xTimer, xAutoReload );
 
         configASSERT( xTimer );
-        taskENTER_CRITICAL();
+        tmrENTER_CRITICAL();
         {
             if( xAutoReload != pdFALSE )
             {
@@ -591,7 +621,7 @@
                 pxTimer->ucStatus &= ( ( uint8_t ) ~tmrSTATUS_IS_AUTORELOAD );
             }
         }
-        taskEXIT_CRITICAL();
+        tmrEXIT_CRITICAL();
 
         traceRETURN_vTimerSetReloadMode();
     }
@@ -605,7 +635,7 @@
         traceENTER_xTimerGetReloadMode( xTimer );
 
         configASSERT( xTimer );
-        taskENTER_CRITICAL();
+        tmrENTER_CRITICAL();
         {
             if( ( pxTimer->ucStatus & tmrSTATUS_IS_AUTORELOAD ) == 0U )
             {
@@ -618,7 +648,7 @@
                 xReturn = pdTRUE;
             }
         }
-        taskEXIT_CRITICAL();
+        tmrEXIT_CRITICAL();
 
         traceRETURN_xTimerGetReloadMode( xReturn );
 
@@ -1117,7 +1147,7 @@
         /* Check that the list from which active timers are referenced, and the
          * queue used to communicate with the timer service, have been
          * initialised. */
-        taskENTER_CRITICAL();
+        tmrENTER_CRITICAL();
         {
             if( xTimerQueue == NULL )
             {
@@ -1159,7 +1189,7 @@
                 mtCOVERAGE_TEST_MARKER();
             }
         }
-        taskEXIT_CRITICAL();
+        tmrEXIT_CRITICAL();
     }
 /*-----------------------------------------------------------*/
 
@@ -1173,7 +1203,7 @@
         configASSERT( xTimer );
 
         /* Is the timer in the list of active timers? */
-        taskENTER_CRITICAL();
+        tmrENTER_CRITICAL();
         {
             if( ( pxTimer->ucStatus & tmrSTATUS_IS_ACTIVE ) == 0U )
             {
@@ -1184,7 +1214,7 @@
                 xReturn = pdTRUE;
             }
         }
-        taskEXIT_CRITICAL();
+        tmrEXIT_CRITICAL();
 
         traceRETURN_xTimerIsTimerActive( xReturn );
 
@@ -1201,11 +1231,11 @@
 
         configASSERT( xTimer );
 
-        taskENTER_CRITICAL();
+        tmrENTER_CRITICAL();
         {
             pvReturn = pxTimer->pvTimerID;
         }
-        taskEXIT_CRITICAL();
+        tmrEXIT_CRITICAL();
 
         traceRETURN_pvTimerGetTimerID( pvReturn );
 
@@ -1222,11 +1252,11 @@
 
         configASSERT( xTimer );
 
-        taskENTER_CRITICAL();
+        tmrENTER_CRITICAL();
         {
             pxTimer->pvTimerID = pvNewID;
         }
-        taskEXIT_CRITICAL();
+        tmrEXIT_CRITICAL();
 
         traceRETURN_vTimerSetTimerID();
     }
@@ -1336,6 +1366,67 @@
         xTimerQueue = NULL;
         xTimerTaskHandle = NULL;
     }
+/*-----------------------------------------------------------*/
+
+    #if ( portUSING_GRANULAR_LOCKS == 1 )
+        static void vTimerEnterCritical( void )
+        {
+            portDISABLE_INTERRUPTS();
+            {
+                const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();
+
+                /* Task spinlock is always taken first */
+                portGET_SPINLOCK( xCoreID, &xTaskSpinlock );
+
+                /* Take the ISR spinlock next */
+                portGET_SPINLOCK( xCoreID, &xISRSpinlock );
+
+                /* Increment the critical nesting count */
+                portINCREMENT_CRITICAL_NESTING_COUNT( xCoreID );
+            }
+        }
+    #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/*-----------------------------------------------------------*/
+
+    #if ( portUSING_GRANULAR_LOCKS == 1 )
+        static void vTimerExitCritical( void )
+        {
+            const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();
+
+            configASSERT( portGET_CRITICAL_NESTING_COUNT( xCoreID ) > 0U );
+
+            /* Get the xYieldPending status inside the critical section. */
+            BaseType_t xYieldCurrentTask = xTaskUnlockCanYield();
+
+            /* Decrement the critical nesting count */
+            portDECREMENT_CRITICAL_NESTING_COUNT( xCoreID );
+
+            /* Release the ISR spinlock */
+            portRELEASE_SPINLOCK( xCoreID, &xISRSpinlock );
+
+            /* Release the task spinlock */
+            portRELEASE_SPINLOCK( xCoreID, &xTaskSpinlock );
+
+            if( portGET_CRITICAL_NESTING_COUNT( xCoreID ) == 0 )
+            {
+                portENABLE_INTERRUPTS();
+
+                if( xYieldCurrentTask != pdFALSE )
+                {
+                    portYIELD();
+                }
+                else
+                {
+                    mtCOVERAGE_TEST_MARKER();
+                }
+            }
+            else
+            {
+                mtCOVERAGE_TEST_MARKER();
+            }
+        }
+    #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
 /*-----------------------------------------------------------*/
 
 /* This entire source file will be skipped if the application is not configured
