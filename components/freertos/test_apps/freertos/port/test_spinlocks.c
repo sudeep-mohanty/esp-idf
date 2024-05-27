@@ -21,8 +21,6 @@
 
 #include "test_utils.h"
 
-#if !CONFIG_FREERTOS_SMP    // Known issue in Amazon SMP FreeRTOS port IDF-6204
-
 #define REPEAT_OPS 10000
 
 static uint32_t start, end;
@@ -175,5 +173,3 @@ TEST_CASE("portMUX high contention, PSRAM", "[freertos]")
 #endif// CONFIG_SPIRAM_USE_MALLOC || CONFIG_SPIRAM_USE_CAPS_ALLOC
 
 #endif // CONFIG_FREERTOS_NUMBER_OF_CORES == 2
-
-#endif // !CONFIG_FREERTOS_SMP

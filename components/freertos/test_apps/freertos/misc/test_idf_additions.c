@@ -256,12 +256,6 @@ TEST_CASE("IDF additions: Event group creation with memory caps", "[freertos]")
     vEventGroupDelete(evt_group_handle);
 }
 
-#if !CONFIG_FREERTOS_SMP
-/*
-Scheduler suspension behavior has changed in SMP FreeRTOS, thus these test are disabled for SMP FreeRTOS.
-See IDF-5201
-*/
-
 /* ---------------------------------------------------------------------------------------------------------------------
 IDF additions: IDF tick hooks during scheduler suspension
 
@@ -338,5 +332,3 @@ TEST_CASE("IDF additions: IDF tick hooks during scheduler suspension", "[freerto
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     }
 }
-
-#endif // !CONFIG_FREERTOS_SMP

@@ -18,7 +18,6 @@ a definition for vApplicationTickHook(). Thus this test cannot be run.
 #include "unity.h"
 #include "test_utils.h"
 
-#if !CONFIG_FREERTOS_SMP
 /*
 Test FreeRTOS idle hook. Only compiled in if FreeRTOS idle hooks are enabled.
 */
@@ -58,12 +57,18 @@ TEST_CASE("FreeRTOS tick hook", "[freertos]")
     const unsigned SLEEP_FOR = 20;
     tick_count = before;
     vTaskDelay(SLEEP_FOR);
+#if CONFIG_FREERTOS_SMP
+    /* vApplicationTickHook() is called once per tick in SMP FreeRTOS */
+    TEST_ASSERT_UINT32_WITHIN_MESSAGE(3, before + SLEEP_FOR, tick_count,
+                                      "The FreeRTOS tick hook should have been called approx 1 time per tick");
+#else
+    /* vApplicationTickHook() is called once per tick per CPU in IDF FreeRTOS */
     TEST_ASSERT_UINT32_WITHIN_MESSAGE(3 * CONFIG_FREERTOS_NUMBER_OF_CORES, before + SLEEP_FOR * CONFIG_FREERTOS_NUMBER_OF_CORES, tick_count,
                                       "The FreeRTOS tick hook should have been called approx 1 time per tick per CPU");
+#endif /* CONFIG_FREERTOS_SMP */
 }
 
 #endif // CONFIG_FREERTOS_USE_TICK_HOOK
-#endif // !CONFIG_FREERTOS_SMP
 
 #if CONFIG_FREERTOS_TASK_PRE_DELETION_HOOK
 
