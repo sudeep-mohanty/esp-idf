@@ -277,9 +277,11 @@
 
 #if CONFIG_FREERTOS_SMP && ( CONFIG_FREERTOS_NUMBER_OF_CORES > 1 )
     #define configUSE_CORE_AFFINITY              1
-    #define configRUN_MULTIPLE_PRIORITIES        1
     #define configUSE_TASK_PREEMPTION_DISABLE    1
 #endif /* CONFIG_FREERTOS_SMP && ( CONFIG_FREERTOS_NUMBER_OF_CORES > 1 ) */
+#if CONFIG_FREERTOS_SMP
+    #define configRUN_MULTIPLE_PRIORITIES        1
+#endif /* CONFIG_FREERTOS_SMP */
 
 /* -------------------------------------------------- IDF FreeRTOS -----------------------------------------------------
  * - All IDF FreeRTOS specific configurations
