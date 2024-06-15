@@ -62,6 +62,39 @@
         #error INCLUDE_xTaskGetCurrentTaskHandle must be set to 1 to build stream_buffer.c
     #endif
 
+
+/*
+ * Macros to mark the start and end of a critical code region.
+ */
+    #if ( portUSING_GRANULAR_LOCKS == 1 )
+        #define sbENTER_CRITICAL( pxStreamBuffer )                                      taskDATA_GROUP_ENTER_CRITICAL( &( ( pxStreamBuffer )->xTaskSpinlock ), &( ( pxStreamBuffer )->xISRSpinlock ) )
+        #define sbENTER_CRITICAL_FROM_ISR( pxStreamBuffer, puxSavedInterruptStatus )    taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR( &( ( pxStreamBuffer )->xISRSpinlock ), puxSavedInterruptStatus )
+        #define sbEXIT_CRITICAL( pxStreamBuffer )                                       taskDATA_GROUP_EXIT_CRITICAL( &( ( pxStreamBuffer )->xTaskSpinlock ), &( ( pxStreamBuffer )->xISRSpinlock ) )
+        #define sbEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxStreamBuffer )      taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, &( ( pxStreamBuffer )->xISRSpinlock ) )
+    #else /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+        #define sbENTER_CRITICAL( pxStreamBuffer )                                      taskENTER_CRITICAL()
+        #define sbENTER_CRITICAL_FROM_ISR( pxStreamBuffer, puxSavedInterruptStatus )    do { *( puxSavedInterruptStatus ) = taskENTER_CRITICAL_FROM_ISR(); } while( 0 )
+        #define sbEXIT_CRITICAL( pxStreamBuffer )                                       taskEXIT_CRITICAL()
+        #define sbEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxStreamBuffer )      taskEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus )
+    #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/*
+ * Macro used to lock and unlock a stream buffer. When a task locks a stream
+ * buffer, the task will have thread safe non-deterministic access to the stream
+ * buffer.
+ * - Concurrent access from other tasks will be blocked by the xTaskSpinlock
+ * - Concurrent access from ISRs will be pended
+ *
+ * When the task unlocks the stream buffer, all pended access attempts are handled.
+ */
+    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+        #define sbLOCK( pxStreamBuffer )      taskDATA_GROUP_LOCK( &( ( pxStreamBuffer )->xTaskSpinlock ) )
+        #define sbUNLOCK( pxStreamBuffer )    taskDATA_GROUP_UNLOCK( &( ( pxStreamBuffer )->xTaskSpinlock ) )
+    #else /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+        #define sbLOCK( pxStreamBuffer )      vTaskSuspendAll()
+        #define sbUNLOCK( pxStreamBuffer )    ( void ) xTaskResumeAll()
+    #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+
 /* If the user has not provided application specific Rx notification macros,
  * or #defined the notification macros away, then provide default implementations
  * that uses task notifications. */
@@ -69,7 +102,7 @@
         #define sbRECEIVE_COMPLETED( pxStreamBuffer )                                 \
     do                                                                                \
     {                                                                                 \
-        vTaskSuspendAll();                                                            \
+        sbLOCK( pxStreamBuffer );                                                     \
         {                                                                             \
             if( ( pxStreamBuffer )->xTaskWaitingToSend != NULL )                      \
             {                                                                         \
@@ -80,7 +113,7 @@
                 ( pxStreamBuffer )->xTaskWaitingToSend = NULL;                        \
             }                                                                         \
         }                                                                             \
-        ( void ) xTaskResumeAll();                                                    \
+        sbUNLOCK( pxStreamBuffer );                                                   \
     } while( 0 )
     #endif /* sbRECEIVE_COMPLETED */
 
@@ -109,7 +142,7 @@
     do {                                                                                     \
         UBaseType_t uxSavedInterruptStatus;                                                  \
                                                                                              \
-        uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();                              \
+        sbENTER_CRITICAL_FROM_ISR( pxStreamBuffer, &uxSavedInterruptStatus );                \
         {                                                                                    \
             if( ( pxStreamBuffer )->xTaskWaitingToSend != NULL )                             \
             {                                                                                \
@@ -121,7 +154,7 @@
                 ( pxStreamBuffer )->xTaskWaitingToSend = NULL;                               \
             }                                                                                \
         }                                                                                    \
-        taskEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus );                                \
+        sbEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxStreamBuffer );                  \
     } while( 0 )
     #endif /* sbRECEIVE_COMPLETED_FROM_ISR */
 
@@ -149,7 +182,7 @@
  */
     #ifndef sbSEND_COMPLETED
         #define sbSEND_COMPLETED( pxStreamBuffer )                                  \
-    vTaskSuspendAll();                                                              \
+    sbLOCK( pxStreamBuffer );                                                       \
     {                                                                               \
         if( ( pxStreamBuffer )->xTaskWaitingToReceive != NULL )                     \
         {                                                                           \
@@ -160,7 +193,7 @@
             ( pxStreamBuffer )->xTaskWaitingToReceive = NULL;                       \
         }                                                                           \
     }                                                                               \
-    ( void ) xTaskResumeAll()
+    sbUNLOCK( pxStreamBuffer )
     #endif /* sbSEND_COMPLETED */
 
 /* If user has provided a per-instance send completed callback, then
@@ -188,7 +221,7 @@
     do {                                                                                       \
         UBaseType_t uxSavedInterruptStatus;                                                    \
                                                                                                \
-        uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();                                \
+        sbENTER_CRITICAL_FROM_ISR( pxStreamBuffer, &uxSavedInterruptStatus );                  \
         {                                                                                      \
             if( ( pxStreamBuffer )->xTaskWaitingToReceive != NULL )                            \
             {                                                                                  \
@@ -200,7 +233,7 @@
                 ( pxStreamBuffer )->xTaskWaitingToReceive = NULL;                              \
             }                                                                                  \
         }                                                                                      \
-        taskEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus );                                  \
+        sbEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxStreamBuffer );                    \
     } while( 0 )
     #endif /* sbSEND_COMPLETE_FROM_ISR */
 
@@ -253,6 +286,10 @@ typedef struct StreamBufferDef_t
         StreamBufferCallbackFunction_t pxReceiveCompletedCallback; /* Optional callback called on receive complete.  sbRECEIVE_COMPLETED is called if this is NULL. */
     #endif
     UBaseType_t uxNotificationIndex;                               /* The index we are using for notification, by default tskDEFAULT_INDEX_TO_NOTIFY. */
+    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+        portSPINLOCK_TYPE xTaskSpinlock;
+        portSPINLOCK_TYPE xISRSpinlock;
+    #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 } StreamBuffer_t;
 
 /*
@@ -331,6 +368,7 @@ static void prvInitialiseNewStreamBuffer( StreamBuffer_t * const pxStreamBuffer,
                                           StreamBufferCallbackFunction_t pxReceiveCompletedCallback ) PRIVILEGED_FUNCTION;
 
 /*-----------------------------------------------------------*/
+
     #if ( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
     StreamBufferHandle_t xStreamBufferGenericCreate( size_t xBufferSizeBytes,
                                                      size_t xTriggerLevelBytes,
@@ -408,6 +446,13 @@ static void prvInitialiseNewStreamBuffer( StreamBuffer_t * const pxStreamBuffer,
                                           ucFlags,
                                           pxSendCompletedCallback,
                                           pxReceiveCompletedCallback );
+
+            #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+            {
+                portINIT_SPINLOCK( &( ( ( StreamBuffer_t * ) pvAllocatedMemory )->xTaskSpinlock ) );
+                portINIT_SPINLOCK( &( ( ( StreamBuffer_t * ) pvAllocatedMemory )->xISRSpinlock ) );
+            }
+            #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
             traceSTREAM_BUFFER_CREATE( ( ( StreamBuffer_t * ) pvAllocatedMemory ), xStreamBufferType );
         }
@@ -502,6 +547,13 @@ static void prvInitialiseNewStreamBuffer( StreamBuffer_t * const pxStreamBuffer,
             /* Remember this was statically allocated in case it is ever deleted
              * again. */
             pxStreamBuffer->ucFlags |= sbFLAGS_IS_STATICALLY_ALLOCATED;
+
+            #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+            {
+                portINIT_SPINLOCK( &( pxStreamBuffer->xTaskSpinlock ) );
+                portINIT_SPINLOCK( &( pxStreamBuffer->xISRSpinlock ) );
+            }
+            #endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
 
             traceSTREAM_BUFFER_CREATE( pxStreamBuffer, xStreamBufferType );
 
@@ -618,7 +670,7 @@ BaseType_t xStreamBufferReset( StreamBufferHandle_t xStreamBuffer )
     #endif
 
     /* Can only reset a message buffer if there are no tasks blocked on it. */
-    taskENTER_CRITICAL();
+    sbENTER_CRITICAL( pxStreamBuffer );
     {
         if( ( pxStreamBuffer->xTaskWaitingToReceive == NULL ) && ( pxStreamBuffer->xTaskWaitingToSend == NULL ) )
         {
@@ -648,7 +700,7 @@ BaseType_t xStreamBufferReset( StreamBufferHandle_t xStreamBuffer )
             xReturn = pdPASS;
         }
     }
-    taskEXIT_CRITICAL();
+    sbEXIT_CRITICAL( pxStreamBuffer );
 
     traceRETURN_xStreamBufferReset( xReturn );
 
@@ -876,7 +928,7 @@ size_t xStreamBufferSend( StreamBufferHandle_t xStreamBuffer,
         {
             /* Wait until the required number of bytes are free in the message
              * buffer. */
-            taskENTER_CRITICAL();
+            sbENTER_CRITICAL( pxStreamBuffer );
             {
                 xSpace = xStreamBufferSpacesAvailable( pxStreamBuffer );
 
@@ -891,15 +943,19 @@ size_t xStreamBufferSend( StreamBufferHandle_t xStreamBuffer,
                 }
                 else
                 {
-                    taskEXIT_CRITICAL();
+                    sbEXIT_CRITICAL( pxStreamBuffer );
                     break;
                 }
             }
-            taskEXIT_CRITICAL();
+            sbEXIT_CRITICAL( pxStreamBuffer );
 
             traceBLOCKING_ON_STREAM_BUFFER_SEND( xStreamBuffer );
             ( void ) xTaskNotifyWaitIndexed( pxStreamBuffer->uxNotificationIndex, ( uint32_t ) 0, ( uint32_t ) 0, NULL, xTicksToWait );
-            pxStreamBuffer->xTaskWaitingToSend = NULL;
+            sbENTER_CRITICAL( pxStreamBuffer );
+            {
+                pxStreamBuffer->xTaskWaitingToSend = NULL;
+            }
+            sbEXIT_CRITICAL( pxStreamBuffer );
         } while( xTaskCheckForTimeOut( &xTimeOut, &xTicksToWait ) == pdFALSE );
     }
     else
@@ -1094,7 +1150,7 @@ size_t xStreamBufferReceive( StreamBufferHandle_t xStreamBuffer,
     {
         /* Checking if there is data and clearing the notification state must be
          * performed atomically. */
-        taskENTER_CRITICAL();
+        sbENTER_CRITICAL( pxStreamBuffer );
         {
             xBytesAvailable = prvBytesInBuffer( pxStreamBuffer );
 
@@ -1119,14 +1175,18 @@ size_t xStreamBufferReceive( StreamBufferHandle_t xStreamBuffer,
                 mtCOVERAGE_TEST_MARKER();
             }
         }
-        taskEXIT_CRITICAL();
+        sbEXIT_CRITICAL( pxStreamBuffer );
 
         if( xBytesAvailable <= xBytesToStoreMessageLength )
         {
             /* Wait for data to be available. */
             traceBLOCKING_ON_STREAM_BUFFER_RECEIVE( xStreamBuffer );
             ( void ) xTaskNotifyWaitIndexed( pxStreamBuffer->uxNotificationIndex, ( uint32_t ) 0, ( uint32_t ) 0, NULL, xTicksToWait );
-            pxStreamBuffer->xTaskWaitingToReceive = NULL;
+            sbENTER_CRITICAL( pxStreamBuffer );
+            {
+                pxStreamBuffer->xTaskWaitingToReceive = NULL;
+            }
+            sbEXIT_CRITICAL( pxStreamBuffer );
 
             /* Recheck the data available after blocking. */
             xBytesAvailable = prvBytesInBuffer( pxStreamBuffer );
@@ -1416,7 +1476,7 @@ BaseType_t xStreamBufferSendCompletedFromISR( StreamBufferHandle_t xStreamBuffer
     /* MISRA Ref 4.7.1 [Return value shall be checked] */
     /* More details at: https://github.com/FreeRTOS/FreeRTOS-Kernel/blob/main/MISRA.md#dir-47 */
     /* coverity[misra_c_2012_directive_4_7_violation] */
-    uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
+    sbENTER_CRITICAL_FROM_ISR( pxStreamBuffer, &uxSavedInterruptStatus );
     {
         if( ( pxStreamBuffer )->xTaskWaitingToReceive != NULL )
         {
@@ -1433,7 +1493,7 @@ BaseType_t xStreamBufferSendCompletedFromISR( StreamBufferHandle_t xStreamBuffer
             xReturn = pdFALSE;
         }
     }
-    taskEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus );
+    sbEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxStreamBuffer );
 
     traceRETURN_xStreamBufferSendCompletedFromISR( xReturn );
 
@@ -1455,7 +1515,7 @@ BaseType_t xStreamBufferReceiveCompletedFromISR( StreamBufferHandle_t xStreamBuf
     /* MISRA Ref 4.7.1 [Return value shall be checked] */
     /* More details at: https://github.com/FreeRTOS/FreeRTOS-Kernel/blob/main/MISRA.md#dir-47 */
     /* coverity[misra_c_2012_directive_4_7_violation] */
-    uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
+    sbENTER_CRITICAL_FROM_ISR( pxStreamBuffer, &uxSavedInterruptStatus );
     {
         if( ( pxStreamBuffer )->xTaskWaitingToSend != NULL )
         {
@@ -1472,7 +1532,7 @@ BaseType_t xStreamBufferReceiveCompletedFromISR( StreamBufferHandle_t xStreamBuf
             xReturn = pdFALSE;
         }
     }
-    taskEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus );
+    sbEXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxStreamBuffer );
 
     traceRETURN_xStreamBufferReceiveCompletedFromISR( xReturn );
 
@@ -1599,6 +1659,13 @@ static void prvInitialiseNewStreamBuffer( StreamBuffer_t * const pxStreamBuffer,
                                           StreamBufferCallbackFunction_t pxSendCompletedCallback,
                                           StreamBufferCallbackFunction_t pxReceiveCompletedCallback )
 {
+    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+        /* Preserve the embedded spinlocks across the memset; the reset
+         * path runs with xTaskSpinlock held by the caller. */
+        portSPINLOCK_TYPE xTaskSpinlock = pxStreamBuffer->xTaskSpinlock;
+        portSPINLOCK_TYPE xISRSpinlock = pxStreamBuffer->xISRSpinlock;
+    #endif
+
     /* Assert here is deliberately writing to the entire buffer to ensure it can
      * be written to without generating exceptions, and is setting the buffer to a
      * known value to assist in development/debugging. */
@@ -1618,6 +1685,11 @@ static void prvInitialiseNewStreamBuffer( StreamBuffer_t * const pxStreamBuffer,
     pxStreamBuffer->xTriggerLevelBytes = xTriggerLevelBytes;
     pxStreamBuffer->ucFlags = ucFlags;
     pxStreamBuffer->uxNotificationIndex = tskDEFAULT_INDEX_TO_NOTIFY;
+
+    #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+        pxStreamBuffer->xTaskSpinlock = xTaskSpinlock;
+        pxStreamBuffer->xISRSpinlock = xISRSpinlock;
+    #endif
     #if ( configUSE_SB_COMPLETED_CALLBACK == 1 )
     {
         pxStreamBuffer->pxSendCompletedCallback = pxSendCompletedCallback;
