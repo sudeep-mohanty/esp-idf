@@ -813,8 +813,18 @@ static BaseType_t prvSendAcquireGeneric(Ringbuffer_t *pxRingbuffer,
 
         if (xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait) == pdFALSE) {
             //Not timed out yet. Block the current task
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            vTaskSuspendAll();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
             vTaskPlaceOnEventList(&pxRingbuffer->xTasksWaitingToSend, xTicksToWait);
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            BaseType_t xAlreadyYielded = xTaskResumeAll();
+            if (xAlreadyYielded == pdFALSE) {
+                portYIELD_WITHIN_API();
+            }
+#else
             portYIELD_WITHIN_API();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
         } else {
             //We have timed out
             xExitLoop = pdTRUE;
@@ -883,8 +893,18 @@ static BaseType_t prvReceiveGeneric(Ringbuffer_t *pxRingbuffer,
 
         if (xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait) == pdFALSE) {
             //Not timed out yet. Block the current task
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            vTaskSuspendAll();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
             vTaskPlaceOnEventList(&pxRingbuffer->xTasksWaitingToReceive, xTicksToWait);
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            BaseType_t xAlreadyYielded = xTaskResumeAll();
+            if (xAlreadyYielded == pdFALSE) {
+                portYIELD_WITHIN_API();
+            }
+#else
             portYIELD_WITHIN_API();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
         } else {
             //We have timed out.
             xExitLoop = pdTRUE;
@@ -1086,7 +1106,11 @@ BaseType_t xRingbufferSendFromISR(RingbufHandle_t xRingbuffer,
         } else {
             //If a task was waiting for data to arrive on the ring buffer, unblock it immediately.
             if (listLIST_IS_EMPTY(&pxRingbuffer->xTasksWaitingToReceive) == pdFALSE) {
+#if ( CONFIG_FREERTOS_SMP == 1 )
+                if (xTaskRemoveFromEventListFromISR(&pxRingbuffer->xTasksWaitingToReceive) == pdTRUE) {
+#else /* if ( CONFIG_FREERTOS_SMP == 1 ) */
                 if (xTaskRemoveFromEventList(&pxRingbuffer->xTasksWaitingToReceive) == pdTRUE) {
+#endif /* if ( CONFIG_FREERTOS_SMP == 1 ) */
                     //The unblocked task will preempt us. Record that a context switch is required.
                     if (pxHigherPriorityTaskWoken != NULL) {
                         *pxHigherPriorityTaskWoken = pdTRUE;
@@ -1242,7 +1266,11 @@ void vRingbufferReturnItemFromISR(RingbufHandle_t xRingbuffer, void *pvItem, Bas
     pxRingbuffer->vReturnItem(pxRingbuffer, (uint8_t *)pvItem);
     //If a task was waiting for space to send, unblock it immediately.
     if (listLIST_IS_EMPTY(&pxRingbuffer->xTasksWaitingToSend) == pdFALSE) {
+#if ( CONFIG_FREERTOS_SMP == 1 )
+        if (xTaskRemoveFromEventListFromISR(&pxRingbuffer->xTasksWaitingToSend) == pdTRUE) {
+#else /* if ( CONFIG_FREERTOS_SMP == 1 ) */
         if (xTaskRemoveFromEventList(&pxRingbuffer->xTasksWaitingToSend) == pdTRUE) {
+#endif /* if ( CONFIG_FREERTOS_SMP == 1 ) */
             //The unblocked task will preempt us. Record that a context switch is required.
             if (pxHigherPriorityTaskWoken != NULL) {
                 *pxHigherPriorityTaskWoken = pdTRUE;
