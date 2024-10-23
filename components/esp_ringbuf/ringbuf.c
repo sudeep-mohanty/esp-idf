@@ -805,8 +805,18 @@ static BaseType_t prvSendAcquireGeneric(Ringbuffer_t *pxRingbuffer,
 
         if (xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait) == pdFALSE) {
             //Not timed out yet. Block the current task
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            vTaskSuspendAll();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
             vTaskPlaceOnEventList(&pxRingbuffer->xTasksWaitingToSend, xTicksToWait);
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            BaseType_t xAlreadyYielded = xTaskResumeAll();
+            if (xAlreadyYielded == pdFALSE) {
+                portYIELD_WITHIN_API();
+            }
+#else
             portYIELD_WITHIN_API();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
         } else {
             //We have timed out
             xExitLoop = pdTRUE;
@@ -875,8 +885,18 @@ static BaseType_t prvReceiveGeneric(Ringbuffer_t *pxRingbuffer,
 
         if (xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait) == pdFALSE) {
             //Not timed out yet. Block the current task
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            vTaskSuspendAll();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
             vTaskPlaceOnEventList(&pxRingbuffer->xTasksWaitingToReceive, xTicksToWait);
+#if ( ( CONFIG_FREERTOS_SMP ) && ( CONFIG_FREERTOS_UNICORE ) )
+            BaseType_t xAlreadyYielded = xTaskResumeAll();
+            if (xAlreadyYielded == pdFALSE) {
+                portYIELD_WITHIN_API();
+            }
+#else
             portYIELD_WITHIN_API();
+#endif // CONFIG_FREERTOS_SMP && CONFIG_FREERTOS_UNICORE
         } else {
             //We have timed out.
             xExitLoop = pdTRUE;
