@@ -74,8 +74,13 @@ unsigned int port_interruptNesting[portNUM_PROCESSORS] = {0};  // Interrupt nest
 volatile unsigned port_uxCoreStartupDone[portNUM_PROCESSORS] = {0};  // Indicates whether the core has completed its startup sequence
 #if ( configNUMBER_OF_CORES > 1 )
 //FreeRTOS SMP Locks
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+portMUX_TYPE port_xUserTaskLock = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE port_xUserISRLock = portMUX_INITIALIZER_UNLOCKED;
+#else /* portUSING_GRANULAR_LOCKS == 1*/
 portMUX_TYPE port_xTaskLock = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE port_xISRLock = portMUX_INITIALIZER_UNLOCKED;
+#endif /* portUSING_GRANULAR_LOCKS == 1*/
 #endif /* configNUMBER_OF_CORES > 1 */
 
 /* ------------------------------------------------ IDF Compatibility --------------------------------------------------
@@ -100,6 +105,9 @@ BaseType_t port_uxCriticalOldInterruptStateIDF[portNUM_PROCESSORS] = {0};
 #if CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM
 volatile bool port_xThreadSafeClaimed = false;
 #endif
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+BaseType_t port_uxCriticalNestingGranular[portNUM_PROCESSORS] = {0};
+#endif /* portUSING_GRANULAR_LOCKS == 1*/
 
 /*
 *******************************************************************************
@@ -148,10 +156,15 @@ BaseType_t xPortEnterCriticalTimeout(portMUX_TYPE *lock, BaseType_t timeout)
         XTOS_RESTORE_JUST_INTLEVEL((int) xOldInterruptLevel);
         return pdFAIL;
     }
-    //Spinlock acquired. Increment the IDF critical nesting count.
+    //Spinlock acquired. Increment the critical nesting count.
     BaseType_t coreID = xPortGetCoreID();
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+    BaseType_t newNesting = port_uxCriticalNestingGranular[coreID] + 1;
+    port_uxCriticalNestingGranular[coreID] = newNesting;
+#else
     BaseType_t newNesting = port_uxCriticalNestingIDF[coreID] + 1;
     port_uxCriticalNestingIDF[coreID] = newNesting;
+#endif
     //If this is the first entry to a critical section. Save the old interrupt level.
     if ( newNesting == 1 ) {
         port_uxCriticalOldInterruptStateIDF[coreID] = xOldInterruptLevel;
@@ -173,17 +186,24 @@ void vPortExitCriticalIDF(portMUX_TYPE *lock)
      */
     spinlock_release(lock);
     BaseType_t coreID = xPortGetCoreID();
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+    BaseType_t nesting = port_uxCriticalNestingGranular[coreID];
+#else
     BaseType_t nesting = port_uxCriticalNestingIDF[coreID];
+#endif
 
     /* Critical section nesting count must never be negative */
     configASSERT( nesting > 0 );
 
     if (nesting > 0) {
         nesting--;
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+        port_uxCriticalNestingGranular[coreID] = nesting;
+#else
         port_uxCriticalNestingIDF[coreID] = nesting;
+#endif
 
-        //This is the last exit call, restore the saved interrupt level
-        if ( nesting == 0 ) {
+        if (nesting == 0) {
             XTOS_RESTORE_JUST_INTLEVEL((int) port_uxCriticalOldInterruptStateIDF[coreID]);
         }
     }
@@ -247,13 +267,15 @@ void vPortAssertIfInISR(void)
 // ------------------ Critical Sections --------------------
 
 #if ( configNUMBER_OF_CORES > 1 )
-void vPortTakeLock( portMUX_TYPE *lock )
+void vPortTakeLock( BaseType_t xCoreID, portMUX_TYPE *lock )
 {
+    (void)xCoreID;
     spinlock_acquire( lock, portMUX_NO_TIMEOUT);
 }
 
-void vPortReleaseLock( portMUX_TYPE *lock )
+void vPortReleaseLock( BaseType_t xCoreID, portMUX_TYPE *lock )
 {
+    (void)xCoreID;
     spinlock_release( lock );
 }
 #endif /* configNUMBER_OF_CORES > 1 */
