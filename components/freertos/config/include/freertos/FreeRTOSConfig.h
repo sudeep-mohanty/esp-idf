@@ -281,9 +281,11 @@
 
 #if CONFIG_FREERTOS_SMP && ( CONFIG_FREERTOS_NUMBER_OF_CORES > 1 )
     #define configUSE_CORE_AFFINITY              1
-    #define configRUN_MULTIPLE_PRIORITIES        1
     #define configUSE_TASK_PREEMPTION_DISABLE    1
 #endif /* CONFIG_FREERTOS_SMP && ( CONFIG_FREERTOS_NUMBER_OF_CORES > 1 ) */
+#if CONFIG_FREERTOS_SMP
+    #define configRUN_MULTIPLE_PRIORITIES        1
+#endif /* CONFIG_FREERTOS_SMP */
 
 /* -------------------------------------------------- IDF FreeRTOS -----------------------------------------------------
  * - All IDF FreeRTOS specific configurations
@@ -306,3 +308,16 @@
  * Please use the Kconfig option CONFIG_FREERTOS_NUMBER_OF_CORES instead.
  */
 #define portNUM_PROCESSORS    configNUMBER_OF_CORES
+
+/* ---------------------- Target Test Framework ----------------------- */
+/* Optional: allow target test apps to customize the test framework. */
+#ifndef configTARGET_TEST_USE_CUSTOM_SETTING
+	#define configTARGET_TEST_USE_CUSTOM_SETTING	0
+#endif
+
+/* If a test provides test-specific FreeRTOS overrides, include them last. */
+#if defined(__has_include)
+	#if __has_include("test_config.h")
+		#include "test_config.h"
+	#endif
+#endif

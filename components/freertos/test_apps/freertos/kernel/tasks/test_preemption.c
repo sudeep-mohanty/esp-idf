@@ -24,12 +24,7 @@
 static volatile bool trigger;
 static volatile bool flag;
 
-#ifndef CONFIG_FREERTOS_SMP
-#define MAX_YIELD_COUNT 10000
-#else
-//TODO: IDF-5081
 #define MAX_YIELD_COUNT 17000
-#endif // CONFIG_FREERTOS_SMP
 
 /* Task:
    - Waits for 'trigger' variable to be set

@@ -609,4 +609,4 @@ TEST_CASE("IDF additions: IDF tick hooks during scheduler suspension", "[freerto
     }
 }
 
-#endif // !CONFIG_FREERTOS_SMP
+#endif /* !CONFIG_FREERTOS_SMP */

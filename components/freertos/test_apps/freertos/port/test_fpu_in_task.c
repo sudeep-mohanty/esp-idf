@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2022-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2022-2025 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -192,6 +192,7 @@ TEST_CASE("FPU: Usage in unpinned task", "[freertos]")
 typedef struct {
     bool negative;
     TaskHandle_t main;
+    SemaphoreHandle_t done_sem;
 } fpu_params_t;
 
 /**
@@ -227,25 +228,31 @@ void fpu_calculation(void* arg)
         vTaskDelay(2);
     }
 
-    xTaskNotifyGive(p->main);
+    xSemaphoreGive(p->done_sem);
     vTaskDelete(NULL);
 }
 
 TEST_CASE("FPU: Unsolicited context switch between tasks using FPU", "[freertos]")
 {
+    SemaphoreHandle_t done_sem = xSemaphoreCreateCounting(2, 0);
+    TEST_ASSERT_NOT_EQUAL(NULL, done_sem);
+
     /* Create two tasks that are on the same core and use the same FPU */
     TaskHandle_t unity_task_handle = xTaskGetCurrentTaskHandle();
     TaskHandle_t tasks[2];
     fpu_params_t params[2] = {
-        { .negative = false, .main = unity_task_handle },
-        { .negative = true,  .main = unity_task_handle },
+        { .negative = false, .main = unity_task_handle, .done_sem = done_sem },
+        { .negative = true,  .main = unity_task_handle, .done_sem = done_sem },
     };
 
     xTaskCreatePinnedToCore(fpu_calculation, "Task1", 2048, params + 0, UNITY_FREERTOS_PRIORITY + 1, &tasks[0], 1);
     xTaskCreatePinnedToCore(fpu_calculation, "Task2", 2048, params + 1, UNITY_FREERTOS_PRIORITY + 1, &tasks[1], 1);
 
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    xSemaphoreTake(done_sem, portMAX_DELAY);
+    xSemaphoreTake(done_sem, portMAX_DELAY);
+
+    vTaskDelay(10);
+    vSemaphoreDelete(done_sem);
 }
 
 #endif // CONFIG_FREERTOS_NUMBER_OF_CORES > 1
