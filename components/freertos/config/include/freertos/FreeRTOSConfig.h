@@ -98,6 +98,9 @@
 #define configNUMBER_OF_CORES                        CONFIG_FREERTOS_NUMBER_OF_CORES
 /* For compatibility */
 #define configNUM_CORES                              configNUMBER_OF_CORES
+/* Enable per-TCB spinlocks to protect TCB-specific data (uxPreemptionDisable, uxDeferredStateChange).
+ * This reduces contention by avoiding the kernel lock for preemption disable/enable operations. */
+#define configUSE_TCB_DATA_GROUP_LOCK                1
 
 /* ------------- Synchronization Primitives ---------------- */
 
