@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2026 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -57,30 +57,36 @@
  * The tskKERNEL_VERSION_MAJOR, tskKERNEL_VERSION_MINOR, tskKERNEL_VERSION_BUILD
  * values will reflect the last released version number.
  */
-#define tskKERNEL_VERSION_NUMBER       "V11.1.0"
-#define tskKERNEL_VERSION_MAJOR        11
-#define tskKERNEL_VERSION_MINOR        1
-#define tskKERNEL_VERSION_BUILD        0
+#define tskKERNEL_VERSION_NUMBER                      "V11.1.0+"
+#define tskKERNEL_VERSION_MAJOR                       11
+#define tskKERNEL_VERSION_MINOR                       1
+#define tskKERNEL_VERSION_BUILD                       0
 
 /* MPU region parameters passed in ulParameters
  * of MemoryRegion_t struct. */
-#define tskMPU_REGION_READ_ONLY        ( 1U << 0U )
-#define tskMPU_REGION_READ_WRITE       ( 1U << 1U )
-#define tskMPU_REGION_EXECUTE_NEVER    ( 1U << 2U )
-#define tskMPU_REGION_NORMAL_MEMORY    ( 1U << 3U )
-#define tskMPU_REGION_DEVICE_MEMORY    ( 1U << 4U )
+#define tskMPU_REGION_READ_ONLY                       ( 1U << 0U )
+#define tskMPU_REGION_READ_WRITE                      ( 1U << 1U )
+#define tskMPU_REGION_EXECUTE_NEVER                   ( 1U << 2U )
+#define tskMPU_REGION_NORMAL_MEMORY                   ( 1U << 3U )
+#define tskMPU_REGION_DEVICE_MEMORY                   ( 1U << 4U )
+#if defined( portARMV8M_MINOR_VERSION ) && ( portARMV8M_MINOR_VERSION >= 1 )
+    #define tskMPU_REGION_PRIVILEGED_EXECUTE_NEVER    ( 1U << 5U )
+#endif /* portARMV8M_MINOR_VERSION >= 1 */
+#define tskMPU_REGION_NON_SHAREABLE                   ( 1U << 6U )
+#define tskMPU_REGION_OUTER_SHAREABLE                 ( 1U << 7U )
+#define tskMPU_REGION_INNER_SHAREABLE                 ( 1U << 8U )
 
 /* MPU region permissions stored in MPU settings to
  * authorize access requests. */
-#define tskMPU_READ_PERMISSION         ( 1U << 0U )
-#define tskMPU_WRITE_PERMISSION        ( 1U << 1U )
+#define tskMPU_READ_PERMISSION                        ( 1U << 0U )
+#define tskMPU_WRITE_PERMISSION                       ( 1U << 1U )
 
 /* The direct to task notification feature used to have only a single notification
  * per task.  Now there is an array of notifications per task that is dimensioned by
  * configTASK_NOTIFICATION_ARRAY_ENTRIES.  For backward compatibility, any use of the
  * original direct to task notification defaults to using the first index in the
  * array. */
-#define tskDEFAULT_INDEX_TO_NOTIFY     ( 0 )
+#define tskDEFAULT_INDEX_TO_NOTIFY                    ( 0 )
 
 /**
  * task. h
@@ -165,7 +171,7 @@ typedef struct xTASK_STATUS
 {
     TaskHandle_t xHandle;                         /* The handle of the task to which the rest of the information in the structure relates. */
     const char * pcTaskName;                      /* A pointer to the task's name.  This value will be invalid if the task was deleted since the structure was populated! */
-    UBaseType_t xTaskNumber;                      /* A number unique to the task. */
+    UBaseType_t xTaskNumber;                      /* A number unique to the task. Note that this is not the task number that may be modified using vTaskSetTaskNumber() and uxTaskGetTaskNumber(), but a separate TCB-specific and unique identifier automatically assigned on task generation. */
     eTaskState eCurrentState;                     /* The state in which the task existed when the structure was populated. */
     UBaseType_t uxCurrentPriority;                /* The priority at which the task was running (may be inherited) when the structure was populated. */
     UBaseType_t uxBasePriority;                   /* The priority to which the task will return if the task's current priority has been inherited to avoid unbounded priority inversion when obtaining a mutex.  Only valid if configUSE_MUTEXES is defined as 1 in FreeRTOSConfig.h. */
@@ -494,7 +500,7 @@ typedef enum
  *      xHandle = xTaskCreateStatic(
  *                    vTaskCode,       // Function that implements the task.
  *                    "NAME",          // Text name for the task.
- *                    STACK_SIZE,      // Stack size in bytes.
+ *                    STACK_SIZE,      // Stack size in words, not bytes.
  *                    ( void * ) 1,    // Parameter passed into the task.
  *                    tskIDLE_PRIORITY,// Priority at which the task is created.
  *                    xStack,          // Array to use as the task's stack.
@@ -566,7 +572,7 @@ typedef enum
  * {
  *  vATask,     // pvTaskCode - the function that implements the task.
  *  "ATask",    // pcName - just a text name for the task to assist debugging.
- *  100,        // uxStackDepth - the stack size DEFINED IN BYTES.
+ *  100,        // uxStackDepth - the stack size DEFINED IN WORDS.
  *  NULL,       // pvParameters - passed into the task function as the function parameters.
  *  ( 1U | portPRIVILEGE_BIT ),// uxPriority - task priority, set the portPRIVILEGE_BIT if the task should run in a privileged state.
  *  cStackBuffer,// puxStackBuffer - the buffer to be used as the task stack.
@@ -603,12 +609,12 @@ typedef enum
  * \defgroup xTaskCreateRestricted xTaskCreateRestricted
  * \ingroup Tasks
  */
-#if ( portUSING_MPU_WRAPPERS == 1 )
+#if ( ( portUSING_MPU_WRAPPERS == 1 ) && ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) )
     BaseType_t xTaskCreateRestricted( const TaskParameters_t * const pxTaskDefinition,
                                       TaskHandle_t * pxCreatedTask ) PRIVILEGED_FUNCTION;
 #endif
 
-#if ( ( portUSING_MPU_WRAPPERS == 1 ) && ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 1 ) )
+#if ( ( portUSING_MPU_WRAPPERS == 1 ) && ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) && ( configNUMBER_OF_CORES > 1 ) && ( configUSE_CORE_AFFINITY == 1 ) )
     BaseType_t xTaskCreateRestrictedAffinitySet( const TaskParameters_t * const pxTaskDefinition,
                                                  UBaseType_t uxCoreAffinityMask,
                                                  TaskHandle_t * pxCreatedTask ) PRIVILEGED_FUNCTION;
@@ -660,7 +666,7 @@ typedef enum
  * {
  *  vATask,     // pvTaskCode - the function that implements the task.
  *  "ATask",    // pcName - just a text name for the task to assist debugging.
- *  100,        // uxStackDepth - the stack size DEFINED IN BYTES.
+ *  100,        // uxStackDepth - the stack size DEFINED IN WORDS.
  *  NULL,       // pvParameters - passed into the task function as the function parameters.
  *  ( 1U | portPRIVILEGE_BIT ),// uxPriority - task priority, set the portPRIVILEGE_BIT if the task should run in a privileged state.
  *  cStackBuffer,// puxStackBuffer - the buffer to be used as the task stack.
@@ -898,7 +904,8 @@ void vTaskDelay( const TickType_t xTicksToDelay ) PRIVILEGED_FUNCTION;
  *
  * @return Value which can be used to check whether the task was actually delayed.
  * Will be pdTRUE if the task way delayed and pdFALSE otherwise.  A task will not
- * be delayed if the next expected wake time is in the past.
+ * be delayed if the next expected wake time is in the past. This prevents periodic
+ * tasks from accumulating delays and allows them to resume their regular timing pattern.
  *
  * Example usage:
  * @code{c}
@@ -2200,8 +2207,8 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * Lists all the current tasks, along with their current state and stack
  * usage high water mark.
  *
- * Tasks are reported as blocked ('B'), ready ('R'), deleted ('D') or
- * suspended ('S').
+ * Tasks are reported as running ('X'), blocked ('B'), ready ('R'), deleted ('D')
+ * or suspended ('S').
  *
  * PLEASE NOTE:
  *
@@ -2209,8 +2216,16 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * demo applications.  Do not consider it to be part of the scheduler.
  *
  * vTaskListTasks() calls uxTaskGetSystemState(), then formats part of the
- * uxTaskGetSystemState() output into a human readable table that displays task:
- * names, states, priority, stack usage and task number.
+ * uxTaskGetSystemState() output into a human readable table that displays task
+ * information in the following format:
+ * Task Name, Task State, Task Priority, Task Stack High Watermak, Task Number.
+ *
+ * The following is a sample output:
+ * Task A       X       2           67           2
+ * Task B       R       1           67           3
+ * IDLE         R       0           67           5
+ * Tmr Svc      B       6           137          6
+ *
  * Stack usage specified as the number of unused StackType_t words stack can hold
  * on top of stack - not the number of bytes.
  *
@@ -2261,8 +2276,8 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * Lists all the current tasks, along with their current state and stack
  * usage high water mark.
  *
- * Tasks are reported as blocked ('B'), ready ('R'), deleted ('D') or
- * suspended ('S').
+ * Tasks are reported as running ('X'), blocked ('B'), ready ('R'), deleted ('D')
+ * or suspended ('S').
  *
  * PLEASE NOTE:
  *
@@ -2270,8 +2285,16 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * demo applications.  Do not consider it to be part of the scheduler.
  *
  * vTaskList() calls uxTaskGetSystemState(), then formats part of the
- * uxTaskGetSystemState() output into a human readable table that displays task:
- * names, states, priority, stack usage and task number.
+ * uxTaskGetSystemState() output into a human readable table that displays task
+ * information in the following format:
+ * Task Name, Task State, Task Priority, Task Stack High Watermak, Task Number.
+ *
+ * The following is a sample output:
+ * Task A       X       2           67           2
+ * Task B       R       1           67           3
+ * IDLE         R       0           67           5
+ * Tmr Svc      B       6           137          6
+ *
  * Stack usage specified as the number of unused StackType_t words stack can hold
  * on top of stack - not the number of bytes.
  *
@@ -2597,9 +2620,8 @@ char * pcTaskGetName( TaskHandle_t xTaskToQuery ) PRIVILEGED_FUNCTION;
  * notification value at that index being updated.  ulValue is not used and
  * xTaskNotifyIndexed() always returns pdPASS in this case.
  *
- * pulPreviousNotificationValue -
- * Can be used to pass out the subject task's notification value before any
- * bits are modified by the notify function.
+ * @param pulPreviousNotificationValue Can be used to pass out the subject
+ * task's notification value before any bits are modified by the notify function.
  *
  * @return Dependent on the value of eAction.  See the description of the
  * eAction parameter.
@@ -2743,6 +2765,9 @@ BaseType_t xTaskGenericNotify( TaskHandle_t xTaskToNotify,
  * The task receives a notification without its notification value being
  * updated.  ulValue is not used and xTaskNotify() always returns pdPASS in
  * this case.
+ *
+ * @param pulPreviousNotificationValue Can be used to pass out the subject
+ * task's notification value before any bits are modified by the notify function.
  *
  * @param pxHigherPriorityTaskWoken  xTaskNotifyFromISR() will set
  * *pxHigherPriorityTaskWoken to pdTRUE if sending the notification caused the

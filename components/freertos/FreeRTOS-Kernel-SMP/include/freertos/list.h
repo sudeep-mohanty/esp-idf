@@ -48,7 +48,7 @@
  *
  * In addition to it's value, each list item contains a pointer to the next
  * item in the list (pxNext), a pointer to the list it is in (pxContainer)
- * and a pointer to back to the object that contains it.  These later two
+ * and a pointer back to the object that contains it.  These later two
  * pointers are included for efficiency of list manipulation.  There is
  * effectively a two way link between the object containing the list item and
  * the list item itself.
@@ -96,7 +96,7 @@
  */
 #ifndef configLIST_VOLATILE
     #define configLIST_VOLATILE
-#endif /* configSUPPORT_CROSS_MODULE_OPTIMISATION */
+#endif /* configLIST_VOLATILE */
 
 /* *INDENT-OFF* */
 #ifdef __cplusplus
@@ -195,7 +195,7 @@ typedef struct xLIST
  * Access macro to get the owner of a list item.  The owner of a list item
  * is the object (usually a TCB) that contains the list item.
  *
- * \page listGET_LIST_ITEM_OWNER listSET_LIST_ITEM_OWNER
+ * \page listGET_LIST_ITEM_OWNER listGET_LIST_ITEM_OWNER
  * \ingroup LinkedList
  */
 #define listGET_LIST_ITEM_OWNER( pxListItem )             ( ( pxListItem )->pvOwner )
@@ -314,7 +314,7 @@ typedef struct xLIST
  * Remove an item from a list.  The list item has a pointer to the list that
  * it is in, so only the list item need be passed into the function.
  *
- * @param uxListRemove The item to be removed.  The item will remove itself from
+ * @param pxItemToRemove The item to be removed.  The item will remove itself from
  * the list pointed to by it's pxContainer parameter.
  *
  * @return The number of items that remain in the list after the list item has
@@ -495,7 +495,7 @@ void vListInsertEnd( List_t * const pxList,
  * Remove an item from a list.  The list item has a pointer to the list that
  * it is in, so only the list item need be passed into the function.
  *
- * @param uxListRemove The item to be removed.  The item will remove itself from
+ * @param pxItemToRemove The item to be removed.  The item will remove itself from
  * the list pointed to by it's pxContainer parameter.
  *
  * @return The number of items that remain in the list after the list item has

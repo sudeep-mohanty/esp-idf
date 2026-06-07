@@ -47,12 +47,12 @@
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xMessageBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xMessageBufferRead()) inside a critical section and set the receive
- * timeout to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Message buffers hold variable length messages.  To enable that, when a
  * message is written to the message buffer an additional sizeof( size_t ) bytes
@@ -310,12 +310,12 @@ typedef StreamBufferHandle_t MessageBufferHandle_t;
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xMessageBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xMessageBufferRead()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xMessageBufferSend() to write to a message buffer from a task.  Use
  * xMessageBufferSendFromISR() to write to a message buffer from an interrupt
@@ -413,12 +413,12 @@ typedef StreamBufferHandle_t MessageBufferHandle_t;
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xMessageBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xMessageBufferRead()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xMessageBufferSend() to write to a message buffer from a task.  Use
  * xMessageBufferSendFromISR() to write to a message buffer from an interrupt
@@ -520,12 +520,12 @@ typedef StreamBufferHandle_t MessageBufferHandle_t;
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xMessageBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xMessageBufferRead()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xMessageBufferReceive() to read from a message buffer from a task.  Use
  * xMessageBufferReceiveFromISR() to read from a message buffer from an
@@ -564,14 +564,14 @@ typedef StreamBufferHandle_t MessageBufferHandle_t;
  *
  * Example use:
  * @code{c}
- * void vAFunction( MessageBuffer_t xMessageBuffer )
+ * void vAFunction( MessageBufferHandle_t xMessageBuffer )
  * {
  * uint8_t ucRxData[ 20 ];
  * size_t xReceivedBytes;
  * const TickType_t xBlockTime = pdMS_TO_TICKS( 20 );
  *
  *  // Receive the next message from the message buffer.  Wait in the Blocked
- *  // state (so not using any CPU processing time) for a maximum of 100ms for
+ *  // state (so not using any CPU processing time) for a maximum of 20ms for
  *  // a message to become available.
  *  xReceivedBytes = xMessageBufferReceive( xMessageBuffer,
  *                                          ( void * ) ucRxData,
@@ -614,12 +614,12 @@ typedef StreamBufferHandle_t MessageBufferHandle_t;
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xMessageBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xMessageBufferRead()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xMessageBufferReceive() to read from a message buffer from a task.  Use
  * xMessageBufferReceiveFromISR() to read from a message buffer from an
@@ -659,7 +659,7 @@ typedef StreamBufferHandle_t MessageBufferHandle_t;
  * Example use:
  * @code{c}
  * // A message buffer that has already been created.
- * MessageBuffer_t xMessageBuffer;
+ * MessageBufferHandle_t xMessageBuffer;
  *
  * void vAnInterruptServiceRoutine( void )
  * {

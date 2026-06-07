@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2026 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -251,7 +251,7 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength,
  * other tasks that are waiting for the same mutex.  This function returns
  * that priority.
  */
-    static UBaseType_t prvGetDisinheritPriorityAfterTimeout( const Queue_t * const pxQueue ) PRIVILEGED_FUNCTION;
+    static UBaseType_t prvGetHighestPriorityOfWaitToReceiveList( const Queue_t * const pxQueue ) PRIVILEGED_FUNCTION;
 #endif
 /*-----------------------------------------------------------*/
 
@@ -517,7 +517,10 @@ BaseType_t xQueueGenericReset( QueueHandle_t xQueue,
             /* Check for multiplication overflow. */
             ( ( SIZE_MAX / uxQueueLength ) >= uxItemSize ) &&
             /* Check for addition overflow. */
-            ( ( UBaseType_t ) ( SIZE_MAX - sizeof( Queue_t ) ) >= ( uxQueueLength * uxItemSize ) ) )
+            /* MISRA Ref 14.3.1 [Configuration dependent invariant] */
+            /* More details at: https://github.com/FreeRTOS/FreeRTOS-Kernel/blob/main/MISRA.md#rule-143. */
+            /* coverity[misra_c_2012_rule_14_3_violation] */
+            ( ( SIZE_MAX - sizeof( Queue_t ) ) >= ( size_t ) ( ( size_t ) uxQueueLength * ( size_t ) uxItemSize ) ) )
         {
             /* Allocate enough space to hold the maximum number of items that
              * can be in the queue at any time.  It is valid for uxItemSize to be
@@ -834,6 +837,10 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength,
         if( pxMutex->u.xSemaphore.xMutexHolder == xTaskGetCurrentTaskHandle() )
         {
             ( pxMutex->u.xSemaphore.uxRecursiveCallCount )++;
+
+            /* Check if an overflow occurred. */
+            configASSERT( pxMutex->u.xSemaphore.uxRecursiveCallCount );
+
             xReturn = pdPASS;
         }
         else
@@ -846,6 +853,9 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength,
             if( xReturn != pdFAIL )
             {
                 ( pxMutex->u.xSemaphore.uxRecursiveCallCount )++;
+
+                /* Check if an overflow occurred. */
+                configASSERT( pxMutex->u.xSemaphore.uxRecursiveCallCount );
             }
             else
             {
@@ -1169,9 +1179,8 @@ BaseType_t xQueueGenericSendFromISR( QueueHandle_t xQueue,
 
     traceENTER_xQueueGenericSendFromISR( xQueue, pvItemToQueue, pxHigherPriorityTaskWoken, xCopyPosition );
 
-    configASSERT( pxQueue );
-    configASSERT( !( ( pvItemToQueue == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
-    configASSERT( !( ( xCopyPosition == queueOVERWRITE ) && ( pxQueue->uxLength != 1 ) ) );
+    configASSERT( ( pxQueue != NULL ) && !( ( pvItemToQueue == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
+    configASSERT( ( pxQueue != NULL ) && !( ( xCopyPosition == queueOVERWRITE ) && ( pxQueue->uxLength != 1 ) ) );
 
     /* RTOS ports that support interrupt nesting have the concept of a maximum
      * system call (or maximum API call) interrupt priority.  Interrupts that are
@@ -1345,16 +1354,14 @@ BaseType_t xQueueGiveFromISR( QueueHandle_t xQueue,
      * not (i.e. has a task with a higher priority than us been woken by this
      * post). */
 
-    configASSERT( pxQueue );
-
     /* xQueueGenericSendFromISR() should be used instead of xQueueGiveFromISR()
      * if the item size is not 0. */
-    configASSERT( pxQueue->uxItemSize == 0 );
+    configASSERT( ( pxQueue != NULL ) && ( pxQueue->uxItemSize == 0 ) );
 
     /* Normally a mutex would not be given from an interrupt, especially if
      * there is a mutex holder, as priority inheritance makes no sense for an
-     * interrupts, only tasks. */
-    configASSERT( !( ( pxQueue->uxQueueType == queueQUEUE_IS_MUTEX ) && ( pxQueue->u.xSemaphore.xMutexHolder != NULL ) ) );
+     * interrupt, only tasks. */
+    configASSERT( ( pxQueue != NULL ) && !( ( pxQueue->uxQueueType == queueQUEUE_IS_MUTEX ) && ( pxQueue->u.xSemaphore.xMutexHolder != NULL ) ) );
 
     /* RTOS ports that support interrupt nesting have the concept of a maximum
      * system call (or maximum API call) interrupt priority.  Interrupts that are
@@ -1848,13 +1855,13 @@ BaseType_t xQueueSemaphoreTake( QueueHandle_t xQueue,
                              * has timed out the priority should be disinherited
                              * again, but only as low as the next highest priority
                              * task that is waiting for the same mutex. */
-                            uxHighestWaitingPriority = prvGetDisinheritPriorityAfterTimeout( pxQueue );
+                            uxHighestWaitingPriority = prvGetHighestPriorityOfWaitToReceiveList( pxQueue );
 
                             /* vTaskPriorityDisinheritAfterTimeout uses the uxHighestWaitingPriority
                              * parameter to index pxReadyTasksLists when adding the task holding
                              * mutex to the ready list for its new priority. Coverity thinks that
                              * it can result in out-of-bounds access which is not true because
-                             * uxHighestWaitingPriority, as returned by prvGetDisinheritPriorityAfterTimeout,
+                             * uxHighestWaitingPriority, as returned by prvGetHighestPriorityOfWaitToReceiveList,
                              * is capped at ( configMAX_PRIORITIES - 1 ). */
                             /* coverity[overrun] */
                             vTaskPriorityDisinheritAfterTimeout( pxQueue->u.xSemaphore.xMutexHolder, uxHighestWaitingPriority );
@@ -1889,12 +1896,9 @@ BaseType_t xQueuePeek( QueueHandle_t xQueue,
 
     traceENTER_xQueuePeek( xQueue, pvBuffer, xTicksToWait );
 
-    /* Check the pointer is not NULL. */
-    configASSERT( ( pxQueue ) );
-
     /* The buffer into which data is received can only be NULL if the data size
      * is zero (so no data is copied into the buffer. */
-    configASSERT( !( ( ( pvBuffer ) == NULL ) && ( ( pxQueue )->uxItemSize != ( UBaseType_t ) 0U ) ) );
+    configASSERT( ( pxQueue != NULL ) && !( ( ( pvBuffer ) == NULL ) && ( ( pxQueue )->uxItemSize != ( UBaseType_t ) 0U ) ) );
 
     /* Cannot block if the scheduler is suspended. */
     #if ( ( INCLUDE_xTaskGetSchedulerState == 1 ) || ( configUSE_TIMERS == 1 ) )
@@ -2146,9 +2150,8 @@ BaseType_t xQueuePeekFromISR( QueueHandle_t xQueue,
 
     traceENTER_xQueuePeekFromISR( xQueue, pvBuffer );
 
-    configASSERT( pxQueue );
-    configASSERT( !( ( pvBuffer == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
-    configASSERT( pxQueue->uxItemSize != 0 ); /* Can't peek a semaphore. */
+    configASSERT( ( pxQueue != NULL ) && !( ( pvBuffer == NULL ) && ( pxQueue->uxItemSize != ( UBaseType_t ) 0U ) ) );
+    configASSERT( ( pxQueue != NULL ) && ( pxQueue->uxItemSize != 0 ) ); /* Can't peek a semaphore. */
 
     /* RTOS ports that support interrupt nesting have the concept of a maximum
      * system call (or maximum API call) interrupt priority.  Interrupts that are
@@ -2206,11 +2209,11 @@ UBaseType_t uxQueueMessagesWaiting( const QueueHandle_t xQueue )
 
     configASSERT( xQueue );
 
-    taskENTER_CRITICAL();
+    portBASE_TYPE_ENTER_CRITICAL();
     {
         uxReturn = ( ( Queue_t * ) xQueue )->uxMessagesWaiting;
     }
-    taskEXIT_CRITICAL();
+    portBASE_TYPE_EXIT_CRITICAL();
 
     traceRETURN_uxQueueMessagesWaiting( uxReturn );
 
@@ -2227,11 +2230,11 @@ UBaseType_t uxQueueSpacesAvailable( const QueueHandle_t xQueue )
 
     configASSERT( pxQueue );
 
-    taskENTER_CRITICAL();
+    portBASE_TYPE_ENTER_CRITICAL();
     {
         uxReturn = ( UBaseType_t ) ( pxQueue->uxLength - pxQueue->uxMessagesWaiting );
     }
-    taskEXIT_CRITICAL();
+    portBASE_TYPE_EXIT_CRITICAL();
 
     traceRETURN_uxQueueSpacesAvailable( uxReturn );
 
@@ -2366,7 +2369,7 @@ UBaseType_t uxQueueGetQueueLength( QueueHandle_t xQueue ) /* PRIVILEGED_FUNCTION
 
 #if ( configUSE_MUTEXES == 1 )
 
-    static UBaseType_t prvGetDisinheritPriorityAfterTimeout( const Queue_t * const pxQueue )
+    static UBaseType_t prvGetHighestPriorityOfWaitToReceiveList( const Queue_t * const pxQueue )
     {
         UBaseType_t uxHighestPriorityOfWaitingTasks;
 
@@ -3190,7 +3193,27 @@ BaseType_t xQueueIsQueueFullFromISR( const QueueHandle_t xQueue )
         return pxQueue;
     }
 
-#endif /* configUSE_QUEUE_SETS */
+#endif /* #if ( ( configUSE_QUEUE_SETS == 1 ) && ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) ) */
+/*-----------------------------------------------------------*/
+
+#if ( ( configUSE_QUEUE_SETS == 1 ) && ( configSUPPORT_STATIC_ALLOCATION == 1 ) )
+
+    QueueSetHandle_t xQueueCreateSetStatic( const UBaseType_t uxEventQueueLength,
+                                            uint8_t * pucQueueStorage,
+                                            StaticQueue_t * pxStaticQueue )
+    {
+        QueueSetHandle_t pxQueue;
+
+        traceENTER_xQueueCreateSetStatic( uxEventQueueLength );
+
+        pxQueue = xQueueGenericCreateStatic( uxEventQueueLength, ( UBaseType_t ) sizeof( Queue_t * ), pucQueueStorage, pxStaticQueue, queueQUEUE_TYPE_SET );
+
+        traceRETURN_xQueueCreateSetStatic( pxQueue );
+
+        return pxQueue;
+    }
+
+#endif /* #if ( ( configUSE_QUEUE_SETS == 1 ) && ( configSUPPORT_STATIC_ALLOCATION == 1 ) ) */
 /*-----------------------------------------------------------*/
 
 #if ( configUSE_QUEUE_SETS == 1 )
@@ -3324,6 +3347,8 @@ BaseType_t xQueueIsQueueFullFromISR( const QueueHandle_t xQueue )
         configASSERT( pxQueueSetContainer ); /* LCOV_EXCL_BR_LINE */
         configASSERT( pxQueueSetContainer->uxMessagesWaiting < pxQueueSetContainer->uxLength );
 
+        /* pxQueue->pxQueueSetContainer is verified to be non-null by caller. */
+        /* coverity[dereference] */
         if( pxQueueSetContainer->uxMessagesWaiting < pxQueueSetContainer->uxLength )
         {
             const int8_t cTxLock = pxQueueSetContainer->cTxLock;

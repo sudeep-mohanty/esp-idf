@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2026 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -76,7 +76,7 @@
  * The wait condition is defined by xWaitForAllBits.  If xWaitForAllBits is
  * pdTRUE then the wait condition is met if all the bits set in uxBitsToWaitFor
  * are also set in uxCurrentEventBits.  If xWaitForAllBits is pdFALSE then the
- * wait condition is met if any of the bits set in uxBitsToWait for are also set
+ * wait condition is met if any of the bits set in uxBitsToWaitFor are also set
  * in uxCurrentEventBits.
  */
     static BaseType_t prvTestWaitCondition( const EventBits_t uxCurrentEventBits,
@@ -505,7 +505,7 @@
     }
 /*-----------------------------------------------------------*/
 
-    #if ( ( configUSE_TRACE_FACILITY == 1 ) && ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) )
+    #if ( ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) )
 
         BaseType_t xEventGroupClearBitsFromISR( EventGroupHandle_t xEventGroup,
                                                 const EventBits_t uxBitsToClear )
@@ -515,14 +515,14 @@
             traceENTER_xEventGroupClearBitsFromISR( xEventGroup, uxBitsToClear );
 
             traceEVENT_GROUP_CLEAR_BITS_FROM_ISR( xEventGroup, uxBitsToClear );
-            xReturn = xTimerPendFunctionCallFromISR( vEventGroupClearBitsCallback, ( void * ) xEventGroup, ( uint32_t ) uxBitsToClear, NULL );
+            xReturn = xTimerPendFunctionCallFromISR( &vEventGroupClearBitsCallback, ( void * ) xEventGroup, ( uint32_t ) uxBitsToClear, NULL );
 
             traceRETURN_xEventGroupClearBitsFromISR( xReturn );
 
             return xReturn;
         }
 
-    #endif /* if ( ( configUSE_TRACE_FACILITY == 1 ) && ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) ) */
+    #endif /* if ( ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) ) */
 /*-----------------------------------------------------------*/
 
     EventBits_t xEventGroupGetBitsFromISR( EventGroupHandle_t xEventGroup )
@@ -555,7 +555,7 @@
         ListItem_t * pxNext;
         ListItem_t const * pxListEnd;
         List_t const * pxList;
-        EventBits_t uxBitsToClear = 0, uxBitsWaitedFor, uxControlBits;
+        EventBits_t uxBitsToClear = 0, uxBitsWaitedFor, uxControlBits, uxReturnBits;
         EventGroup_t * pxEventBits = xEventGroup;
         BaseType_t xMatchFound = pdFALSE;
 
@@ -639,12 +639,15 @@
             /* Clear any bits that matched when the eventCLEAR_EVENTS_ON_EXIT_BIT
              * bit was set in the control word. */
             pxEventBits->uxEventBits &= ~uxBitsToClear;
+
+            /* Snapshot resulting bits. */
+            uxReturnBits = pxEventBits->uxEventBits;
         }
         ( void ) xTaskResumeAll();
 
-        traceRETURN_xEventGroupSetBits( pxEventBits->uxEventBits );
+        traceRETURN_xEventGroupSetBits( uxReturnBits );
 
-        return pxEventBits->uxEventBits;
+        return uxReturnBits;
     }
 /*-----------------------------------------------------------*/
 
@@ -813,7 +816,7 @@
     }
 /*-----------------------------------------------------------*/
 
-    #if ( ( configUSE_TRACE_FACILITY == 1 ) && ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) )
+    #if ( ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) )
 
         BaseType_t xEventGroupSetBitsFromISR( EventGroupHandle_t xEventGroup,
                                               const EventBits_t uxBitsToSet,
@@ -824,14 +827,14 @@
             traceENTER_xEventGroupSetBitsFromISR( xEventGroup, uxBitsToSet, pxHigherPriorityTaskWoken );
 
             traceEVENT_GROUP_SET_BITS_FROM_ISR( xEventGroup, uxBitsToSet );
-            xReturn = xTimerPendFunctionCallFromISR( vEventGroupSetBitsCallback, ( void * ) xEventGroup, ( uint32_t ) uxBitsToSet, pxHigherPriorityTaskWoken );
+            xReturn = xTimerPendFunctionCallFromISR( &vEventGroupSetBitsCallback, ( void * ) xEventGroup, ( uint32_t ) uxBitsToSet, pxHigherPriorityTaskWoken );
 
             traceRETURN_xEventGroupSetBitsFromISR( xReturn );
 
             return xReturn;
         }
 
-    #endif /* if ( ( configUSE_TRACE_FACILITY == 1 ) && ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) ) */
+    #endif /* if ( ( INCLUDE_xTimerPendFunctionCall == 1 ) && ( configUSE_TIMERS == 1 ) ) */
 /*-----------------------------------------------------------*/
 
     #if ( configUSE_TRACE_FACILITY == 1 )

@@ -6,7 +6,7 @@
  *
  * SPDX-License-Identifier: MIT
  *
- * SPDX-FileContributor: 2023-2024 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileContributor: 2023-2026 Espressif Systems (Shanghai) CO LTD
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of
  * this software and associated documentation files (the "Software"), to deal in
@@ -53,12 +53,6 @@
  */
 #include <stdint.h> /* READ COMMENT ABOVE. */
 
-/* *INDENT-OFF* */
-#ifdef __cplusplus
-    extern "C" {
-#endif
-/* *INDENT-ON* */
-
 /* Acceptable values for configTICK_TYPE_WIDTH_IN_BITS. */
 #define TICK_TYPE_WIDTH_16_BITS    0
 #define TICK_TYPE_WIDTH_32_BITS    1
@@ -104,6 +98,23 @@
     #define configUSE_MALLOC_FAILED_HOOK    0
 #endif
 
+#ifndef configASSERT
+    #define configASSERT( x )
+    #define configASSERT_DEFINED    0
+#else
+    #define configASSERT_DEFINED    1
+#endif
+
+/* Set configENABLE_PAC and/or configENABLE_BTI to 1 to enable PAC and/or BTI
+ * support and 0 to disable them. These are currently used in ARMv8.1-M ports. */
+#ifndef configENABLE_PAC
+    #define configENABLE_PAC    0
+#endif
+
+#ifndef configENABLE_BTI
+    #define configENABLE_BTI    0
+#endif
+
 /* Basic FreeRTOS definitions. */
 #include "projdefs.h"
 
@@ -132,6 +143,12 @@
     #include "picolibc-freertos.h"
 
 #endif /* if ( configUSE_PICOLIBC_TLS == 1 ) */
+
+/* *INDENT-OFF* */
+#ifdef __cplusplus
+    extern "C" {
+#endif
+/* *INDENT-ON* */
 
 #ifndef configUSE_C_RUNTIME_TLS_SUPPORT
     #define configUSE_C_RUNTIME_TLS_SUPPORT    0
@@ -364,15 +381,12 @@
     #define configIDLE_SHOULD_YIELD    1
 #endif
 
-#if configMAX_TASK_NAME_LEN < 1
-    #error configMAX_TASK_NAME_LEN must be set to a minimum of 1 in FreeRTOSConfig.h
+#ifndef configIDLE_AFFINITY
+    #define configIDLE_AFFINITY    0
 #endif
 
-#ifndef configASSERT
-    #define configASSERT( x )
-    #define configASSERT_DEFINED    0
-#else
-    #define configASSERT_DEFINED    1
+#if configMAX_TASK_NAME_LEN < 1
+    #error configMAX_TASK_NAME_LEN must be set to a minimum of 1 in FreeRTOSConfig.h
 #endif
 
 /* configPRECONDITION should be defined as configASSERT.
@@ -449,7 +463,7 @@
 #ifndef portRELEASE_TASK_LOCK
 
     #if ( configNUMBER_OF_CORES == 1 )
-        #define portRELEASE_TASK_LOCK()
+        #define portRELEASE_TASK_LOCK( xCoreID )
     #else
         #error portRELEASE_TASK_LOCK is required in SMP
     #endif
@@ -459,7 +473,7 @@
 #ifndef portGET_TASK_LOCK
 
     #if ( configNUMBER_OF_CORES == 1 )
-        #define portGET_TASK_LOCK()
+        #define portGET_TASK_LOCK( xCoreID )
     #else
         #error portGET_TASK_LOCK is required in SMP
     #endif
@@ -469,7 +483,7 @@
 #ifndef portRELEASE_ISR_LOCK
 
     #if ( configNUMBER_OF_CORES == 1 )
-        #define portRELEASE_ISR_LOCK()
+        #define portRELEASE_ISR_LOCK( xCoreID )
     #else
         #error portRELEASE_ISR_LOCK is required in SMP
     #endif
@@ -479,7 +493,7 @@
 #ifndef portGET_ISR_LOCK
 
     #if ( configNUMBER_OF_CORES == 1 )
-        #define portGET_ISR_LOCK()
+        #define portGET_ISR_LOCK( xCoreID )
     #else
         #error portGET_ISR_LOCK is required in SMP
     #endif
@@ -623,6 +637,13 @@
 /* Called after a task has been selected to run.  pxCurrentTCB holds a pointer
  * to the task control block of the selected task. */
     #define traceTASK_SWITCHED_IN()
+#endif
+
+#ifndef traceSTARTING_SCHEDULER
+
+/* Called after all idle tasks and timer task (if enabled) have been created
+ * successfully, just before the scheduler is started. */
+    #define traceSTARTING_SCHEDULER( xIdleTaskHandles )
 #endif
 
 #ifndef traceINCREASE_TICK_COUNT
@@ -1479,6 +1500,14 @@
 
 #ifndef traceRETURN_xQueueCreateSet
     #define traceRETURN_xQueueCreateSet( pxQueue )
+#endif
+
+#ifndef traceENTER_xQueueCreateSetStatic
+    #define traceENTER_xQueueCreateSetStatic( uxEventQueueLength )
+#endif
+
+#ifndef traceRETURN_xQueueCreateSetStatic
+    #define traceRETURN_xQueueCreateSetStatic( pxQueue )
 #endif
 
 #ifndef traceENTER_xQueueAddToSet
@@ -3329,12 +3358,6 @@ typedef struct xSTATIC_STREAM_BUFFER
 /* Message buffers are built on stream buffers. */
 typedef StaticStreamBuffer_t StaticMessageBuffer_t;
 
-/* *INDENT-OFF* */
-#ifdef __cplusplus
-    }
-#endif
-/* *INDENT-ON* */
-
 /*-----------------------------------------------------------
 * IDF Compatibility
 *----------------------------------------------------------*/
@@ -3357,5 +3380,11 @@ typedef StaticStreamBuffer_t StaticMessageBuffer_t;
     #include "freertos/idf_additions.h"
 
 #endif /* ESP_PLATFORM */
+
+/* *INDENT-OFF* */
+#ifdef __cplusplus
+    }
+#endif
+/* *INDENT-ON* */
 
 #endif /* INC_FREERTOS_H */

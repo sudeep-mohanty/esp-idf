@@ -44,12 +44,12 @@
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xStreamBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xStreamBufferReceive()) inside a critical section section and set the
- * receive block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  */
 
@@ -518,12 +518,12 @@ typedef void (* StreamBufferCallbackFunction_t)( StreamBufferHandle_t xStreamBuf
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xStreamBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xStreamBufferReceive()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xStreamBufferSend() to write to a stream buffer from a task.  Use
  * xStreamBufferSendFromISR() to write to a stream buffer from an interrupt
@@ -619,12 +619,12 @@ size_t xStreamBufferSend( StreamBufferHandle_t xStreamBuffer,
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xStreamBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xStreamBufferReceive()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xStreamBufferSend() to write to a stream buffer from a task.  Use
  * xStreamBufferSendFromISR() to write to a stream buffer from an interrupt
@@ -722,12 +722,12 @@ size_t xStreamBufferSendFromISR( StreamBufferHandle_t xStreamBuffer,
  * writer and reader to be different tasks or interrupts, but, unlike other
  * FreeRTOS objects, it is not safe to have multiple different writers or
  * multiple different readers.  If there are to be multiple different writers
- * then the application writer must place each call to a writing API function
- * (such as xStreamBufferSend()) inside a critical section and set the send
- * block time to 0.  Likewise, if there are to be multiple different readers
- * then the application writer must place each call to a reading API function
- * (such as xStreamBufferReceive()) inside a critical section and set the receive
- * block time to 0.
+ * then the application writer must serialize calls to writing API functions
+ * (such as xStreamBufferSend()).  Likewise, if there are to be multiple
+ * different readers then the application writer must serialize calls to reading
+ * API functions (such as xStreamBufferReceive()).  One way to achieve such
+ * serialization in single core or SMP kernel is to place each API call inside a
+ * critical section and use a block time of 0.
  *
  * Use xStreamBufferReceive() to read from a stream buffer from a task.  Use
  * xStreamBufferReceiveFromISR() to read from a stream buffer from an
@@ -764,7 +764,7 @@ size_t xStreamBufferSendFromISR( StreamBufferHandle_t xStreamBuffer,
  *
  * Example use:
  * @code{c}
- * void vAFunction( StreamBuffer_t xStreamBuffer )
+ * void vAFunction( StreamBufferHandle_t xStreamBuffer )
  * {
  * uint8_t ucRxData[ 20 ];
  * size_t xReceivedBytes;
@@ -772,7 +772,7 @@ size_t xStreamBufferSendFromISR( StreamBufferHandle_t xStreamBuffer,
  *
  *  // Receive up to another sizeof( ucRxData ) bytes from the stream buffer.
  *  // Wait in the Blocked state (so not using any CPU processing time) for a
- *  // maximum of 100ms for the full sizeof( ucRxData ) number of bytes to be
+ *  // maximum of 20ms for the full sizeof( ucRxData ) number of bytes to be
  *  // available.
  *  xReceivedBytes = xStreamBufferReceive( xStreamBuffer,
  *                                         ( void * ) ucRxData,
@@ -844,7 +844,7 @@ size_t xStreamBufferReceive( StreamBufferHandle_t xStreamBuffer,
  * Example use:
  * @code{c}
  * // A stream buffer that has already been created.
- * StreamBuffer_t xStreamBuffer;
+ * StreamBufferHandle_t xStreamBuffer;
  *
  * void vAnInterruptServiceRoutine( void )
  * {
@@ -1222,7 +1222,7 @@ UBaseType_t uxStreamBufferGetStreamBufferNotificationIndex( StreamBufferHandle_t
  * stream_buffer.h
  *
  * @code{c}
- * void vStreamBufferSetStreamBufferNotificationIndex ( StreamBuffer_t xStreamBuffer, UBaseType_t uxNotificationIndex );
+ * void vStreamBufferSetStreamBufferNotificationIndex ( StreamBufferHandle_t xStreamBuffer, UBaseType_t uxNotificationIndex );
  * @endcode
  *
  * Set the task notification index used for the supplied stream buffer.
