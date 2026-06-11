@@ -284,7 +284,11 @@
     #define configUSE_TASK_PREEMPTION_DISABLE    1
 #endif /* CONFIG_FREERTOS_SMP && ( CONFIG_FREERTOS_NUMBER_OF_CORES > 1 ) */
 #if CONFIG_FREERTOS_SMP
-    #define configRUN_MULTIPLE_PRIORITIES        1
+    #if CONFIG_FREERTOS_RUN_MULTIPLE_PRIORITIES
+        #define configRUN_MULTIPLE_PRIORITIES    1
+    #else
+        #define configRUN_MULTIPLE_PRIORITIES    0
+    #endif
 #endif /* CONFIG_FREERTOS_SMP */
 
 /* -------------------------------------------------- IDF FreeRTOS -----------------------------------------------------
