@@ -130,6 +130,24 @@ menu "FreeRTOS"
                 - The application must provide the hook function ``void vApplicationPassiveIdleHook( void );``
                 - ``vApplicationPassiveIdleHook()`` is called from FreeRTOS minimal idle task(s)
 
+        config FREERTOS_RUN_MULTIPLE_PRIORITIES
+            bool "configRUN_MULTIPLE_PRIORITIES"
+            depends on FREERTOS_SMP
+            default y
+            help
+                Sets configRUN_MULTIPLE_PRIORITIES (see the SMP scheduler documentation for full details).
+
+                When enabled (the default), the SMP scheduler may simultaneously run tasks of differing priorities
+                on different cores. This is the standard SMP scheduling model.
+
+                When disabled, at any point in time only tasks of a single priority level can be running across
+                the cores. The scheduler will not pick a lower-priority task to run on a second core while a
+                higher-priority task is running on another core. This is useful when porting code that was
+                written for a single-core preemptive scheduler and relies on the property that a higher-priority
+                task always preempts a lower-priority one before the lower-priority one can take any action.
+
+                Most applications should leave this enabled.
+
         config FREERTOS_USE_TICK_HOOK
             bool "configUSE_TICK_HOOK"
             default n
