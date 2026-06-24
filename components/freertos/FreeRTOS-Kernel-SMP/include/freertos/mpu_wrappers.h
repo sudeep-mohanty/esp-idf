@@ -194,6 +194,7 @@
             #define xTimerCreateStatic             MPU_xTimerCreateStatic
             #define xTimerGetStaticBuffer          MPU_xTimerGetStaticBuffer
             #define xTimerGenericCommandFromISR    MPU_xTimerGenericCommandFromISR
+            #define xTimerDelete                   MPU_xTimerDelete
         #endif /* #if ( configUSE_MPU_WRAPPERS_V1 == 0 ) */
 
 /* Map standard event_group.h API functions to the MPU equivalents. */
@@ -253,6 +254,9 @@
         #if ( ( configUSE_MPU_WRAPPERS_V1 == 0 ) && ( configENABLE_ACCESS_CONTROL_LIST == 1 ) )
 
             #define vGrantAccessToTask( xTask, xTaskToGrantAccess )                        vGrantAccessToKernelObject( ( xTask ), ( int32_t ) ( xTaskToGrantAccess ) )
+
+/* A privileged task must revoke access to the object before deletion,
+ * otherwise index reuse may result in accidental permissions. */
             #define vRevokeAccessToTask( xTask, xTaskToRevokeAccess )                      vRevokeAccessToKernelObject( ( xTask ), ( int32_t ) ( xTaskToRevokeAccess ) )
 
             #define vGrantAccessToSemaphore( xTask, xSemaphoreToGrantAccess )              vGrantAccessToKernelObject( ( xTask ), ( int32_t ) ( xSemaphoreToGrantAccess ) )
