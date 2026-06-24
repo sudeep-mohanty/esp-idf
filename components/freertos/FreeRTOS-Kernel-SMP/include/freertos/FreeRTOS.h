@@ -550,6 +550,10 @@
         #error portSPINLOCK_TYPE is required for SMP with granular locking feature enabled
     #endif
 
+/* Tools that read task.h without the preprocessor, such as CMock, see the data
+ * group locking prototypes in every build, so the type must always exist. */
+    #define portSPINLOCK_TYPE    BaseType_t
+
 #endif
 
 #ifndef portINIT_SPINLOCK
@@ -1826,6 +1830,14 @@
     #define traceRETURN_vTaskDelete()
 #endif
 
+#ifndef traceENTER_xTaskPeriodicDelay
+    #define traceENTER_xTaskPeriodicDelay( pxPreviousWakeTime, xTimeIncrement )
+#endif
+
+#ifndef traceRETURN_xTaskPeriodicDelay
+    #define traceRETURN_xTaskPeriodicDelay( xIncrements )
+#endif
+
 #ifndef traceENTER_xTaskDelayUntil
     #define traceENTER_xTaskDelayUntil( pxPreviousWakeTime, xTimeIncrement )
 #endif
@@ -1920,6 +1932,46 @@
 
 #ifndef traceRETURN_vTaskPreemptionEnable
     #define traceRETURN_vTaskPreemptionEnable()
+#endif
+
+#ifndef traceENTER_xTaskPreemptionEnableWithYieldStatus
+    #define traceENTER_xTaskPreemptionEnableWithYieldStatus( xTask )
+#endif
+
+#ifndef traceRETURN_xTaskPreemptionEnableWithYieldStatus
+    #define traceRETURN_xTaskPreemptionEnableWithYieldStatus( xReturn )
+#endif
+
+#ifndef traceENTER_vTaskDataGroupEnterCritical
+    #define traceENTER_vTaskDataGroupEnterCritical( pxTaskSpinlock, pxISRSpinlock )
+#endif
+
+#ifndef traceRETURN_vTaskDataGroupEnterCritical
+    #define traceRETURN_vTaskDataGroupEnterCritical()
+#endif
+
+#ifndef traceENTER_vTaskDataGroupLock
+    #define traceENTER_vTaskDataGroupLock( pxTaskSpinlock )
+#endif
+
+#ifndef traceRETURN_vTaskDataGroupLock
+    #define traceRETURN_vTaskDataGroupLock()
+#endif
+
+#ifndef traceENTER_taskDataGroupUnlock
+    #define traceENTER_taskDataGroupUnlock( pxTaskSpinlock )
+#endif
+
+#ifndef traceRETURN_taskDataGroupUnlock
+    #define traceRETURN_taskDataGroupUnlock( xReturn )
+#endif
+
+#ifndef traceENTER_xTaskUnlockCanYield
+    #define traceENTER_xTaskUnlockCanYield()
+#endif
+
+#ifndef traceRETURN_xTaskUnlockCanYield
+    #define traceRETURN_xTaskUnlockCanYield( xReturn )
 #endif
 
 #ifndef traceENTER_vTaskSuspend
@@ -2972,6 +3024,10 @@
     #error configUSE_TASK_PREEMPTION_DISABLE must be set to 1 to use granular locks
 #endif
 
+#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES == 1 ) )
+    #error portUSING_GRANULAR_LOCKS is not supported in single core FreeRTOS
+#endif
+
 #if ( ( configNUMBER_OF_CORES > 1 ) && ( configUSE_PORT_OPTIMISED_TASK_SELECTION != 0 ) )
     #error configUSE_PORT_OPTIMISED_TASK_SELECTION is not supported in SMP FreeRTOS
 #endif
@@ -3256,7 +3312,7 @@ typedef struct xSTATIC_TCB
     #if ( configUSE_TASK_PREEMPTION_DISABLE == 1 )
         UBaseType_t xDummy25;
     #endif
-    #if ( configUSE_TASK_PREEMPTION_DISABLE == 1 )
+    #if ( ( configUSE_TASK_PREEMPTION_DISABLE == 1 ) && ( portUSING_GRANULAR_LOCKS == 1 ) )
         BaseType_t xDummy26;
     #endif
     #if ( portUSING_GRANULAR_LOCKS == 1 )
