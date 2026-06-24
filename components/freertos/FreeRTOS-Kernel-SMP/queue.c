@@ -686,7 +686,7 @@ BaseType_t xQueueGenericReset( QueueHandle_t xQueue,
         return pxNewQueue;
     }
 
-#endif /* configSUPPORT_STATIC_ALLOCATION */
+#endif /* configSUPPORT_DYNAMIC_ALLOCATION */
 /*-----------------------------------------------------------*/
 
 static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength,
@@ -1879,6 +1879,17 @@ BaseType_t xQueueSemaphoreTake( QueueHandle_t xQueue,
                              * has timed out the priority should be disinherited
                              * again, but only as low as the next highest priority
                              * task that is waiting for the same mutex. */
+
+                            #if ( portUSING_GRANULAR_LOCKS == 1 )
+                                /* Acquire the kernel lock so that reading the highest priority
+                                 * of the waiting tasks and the subsequent priority disinheritance
+                                 * are performed atomically. The waiting tasks' event list item
+                                 * values encode their priorities and are maintained under the
+                                 * kernel lock, so the queue data group lock alone is not sufficient
+                                 * to read them consistently. */
+                                vTaskEnterCritical();
+                            #endif
+
                             uxHighestWaitingPriority = prvGetHighestPriorityOfWaitToReceiveList( pxQueue );
 
                             /* vTaskPriorityDisinheritAfterTimeout uses the uxHighestWaitingPriority
@@ -1889,6 +1900,10 @@ BaseType_t xQueueSemaphoreTake( QueueHandle_t xQueue,
                              * is capped at ( configMAX_PRIORITIES - 1 ). */
                             /* coverity[overrun] */
                             vTaskPriorityDisinheritAfterTimeout( pxQueue->u.xSemaphore.xMutexHolder, uxHighestWaitingPriority );
+
+                            #if ( portUSING_GRANULAR_LOCKS == 1 )
+                                vTaskExitCritical();
+                            #endif
                         }
                         queueEXIT_CRITICAL( pxQueue );
                     }
