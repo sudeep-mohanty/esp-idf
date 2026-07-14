@@ -297,138 +297,6 @@ typedef enum
 /* Checks if core ID is valid. */
 #define taskVALID_CORE_ID( xCoreID )    ( ( ( ( ( BaseType_t ) 0 <= ( xCoreID ) ) && ( ( xCoreID ) < ( BaseType_t ) configNUMBER_OF_CORES ) ) ) ? ( pdTRUE ) : ( pdFALSE ) )
 
-/**
- * task. h
- *
- * Macro to enter a data group critical section.
- *
- * \defgroup taskDATA_GROUP_ENTER_CRITICAL taskDATA_GROUP_ENTER_CRITICAL
- * \ingroup GranularLocks
- */
-#if ( portUSING_GRANULAR_LOCKS == 1 )
-
-/* Using a function implementation now since the data group entering critical
- * section needs to check for run state change. */
-    void taskDataGroupEnterCritical( portSPINLOCK_TYPE * pxTaskSpinlock,
-                                     portSPINLOCK_TYPE * pxISRSpinlock );
-    #define taskDATA_GROUP_ENTER_CRITICAL    taskDataGroupEnterCritical
-#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
-
-/**
- * task. h
- *
- * Macro to enter a data group critical section from an interrupt.
- *
- * \defgroup taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR
- * \ingroup GranularLocks
- */
-#if ( portUSING_GRANULAR_LOCKS == 1 )
-    #define taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR( pxISRSpinlock, puxSavedInterruptStatus ) \
-    do {                                                                                     \
-        *( puxSavedInterruptStatus ) = portSET_INTERRUPT_MASK_FROM_ISR();                    \
-        {                                                                                    \
-            const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                     \
-            /* Take the ISR spinlock */                                                      \
-            portGET_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) );          \
-            /* Increment the critical nesting count */                                       \
-            portINCREMENT_CRITICAL_NESTING_COUNT( xCoreID );                                 \
-        }                                                                                    \
-    } while( 0 )
-#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
-
-/**
- * task. h
- *
- * Macro to exit a data group critical section.
- *
- * \defgroup taskDATA_GROUP_EXIT_CRITICAL taskDATA_GROUP_EXIT_CRITICAL
- * \ingroup GranularLocks
- */
-#if ( portUSING_GRANULAR_LOCKS == 1 )
-    #define taskDATA_GROUP_EXIT_CRITICAL( pxTaskSpinlock, pxISRSpinlock )            \
-    do {                                                                             \
-        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                 \
-        configASSERT( portGET_CRITICAL_NESTING_COUNT( xCoreID ) > 0U );              \
-        /* Release the ISR spinlock */                                               \
-        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) );  \
-        /* Release the task spinlock */                                              \
-        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxTaskSpinlock ) ); \
-        /* Decrement the critical nesting count */                                   \
-        portDECREMENT_CRITICAL_NESTING_COUNT( xCoreID );                             \
-        /* Enable interrupts only if the critical nesting count is 0 */              \
-        if( portGET_CRITICAL_NESTING_COUNT( xCoreID ) == 0 )                         \
-        {                                                                            \
-            portENABLE_INTERRUPTS();                                                 \
-        }                                                                            \
-        else                                                                         \
-        {                                                                            \
-            mtCOVERAGE_TEST_MARKER();                                                \
-        }                                                                            \
-        /* Re-enable preemption */                                                   \
-        ( void ) xTaskPreemptionEnableWithYieldStatus( NULL );                       \
-    } while( 0 )
-#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
-
-/**
- * task. h
- *
- * Macro to exit a data group critical section from an interrupt.
- *
- * \defgroup taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR
- * \ingroup GranularLocks
- */
-#if ( portUSING_GRANULAR_LOCKS == 1 )
-    #define taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxISRSpinlock ) \
-    do {                                                                                   \
-        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                       \
-        configASSERT( portGET_CRITICAL_NESTING_COUNT( xCoreID ) > 0U );                    \
-        /* Decrement the critical nesting count */                                         \
-        portDECREMENT_CRITICAL_NESTING_COUNT( xCoreID );                                   \
-        /* Release the ISR spinlock */                                                     \
-        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) );        \
-        if( portGET_CRITICAL_NESTING_COUNT( xCoreID ) == 0 )                               \
-        {                                                                                  \
-            portCLEAR_INTERRUPT_MASK_FROM_ISR( uxSavedInterruptStatus );                   \
-        }                                                                                  \
-    } while( 0 )
-#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
-
-/**
- * task. h
- *
- * Macros to lock a data group (task-level lock only).
- *
- * \defgroup taskDATA_GROUP_LOCK taskDATA_GROUP_LOCK
- * \ingroup GranularLocks
- */
-#if ( portUSING_GRANULAR_LOCKS == 1 )
-    #define taskDATA_GROUP_LOCK( pxTaskSpinlock )                                              \
-    do {                                                                                       \
-        /* Disable preemption while holding the task spinlock. */                              \
-        vTaskPreemptionDisable( NULL );                                                        \
-        {                                                                                      \
-            portGET_SPINLOCK( portGET_CORE_ID(), ( portSPINLOCK_TYPE * ) ( pxTaskSpinlock ) ); \
-        }                                                                                      \
-    } while( 0 )
-#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
-
-/**
- * task. h
- *
- * Macros to unlock a data group (task-level lock only).
- *
- * \defgroup taskDATA_GROUP_UNLOCK taskDATA_GROUP_UNLOCK
- * \ingroup GranularLocks
- */
-#if ( portUSING_GRANULAR_LOCKS == 1 )
-
-/* Release the task spinlock and re-enable preemption.
- * Returns the yield status reported by xTaskPreemptionEnableWithYieldStatus(). */
-    #define taskDATA_GROUP_UNLOCK( pxTaskSpinlock )                                          \
-    ( portRELEASE_SPINLOCK( portGET_CORE_ID(), ( portSPINLOCK_TYPE * ) ( pxTaskSpinlock ) ), \
-      xTaskPreemptionEnableWithYieldStatus( NULL ) )
-#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
-
 /*-----------------------------------------------------------
 * TASK CREATION API
 *----------------------------------------------------------*/
@@ -3735,6 +3603,173 @@ void vTaskResetState( void ) PRIVILEGED_FUNCTION;
 * SCHEDULER INTERNALS AVAILABLE FOR PORTING PURPOSES
 *----------------------------------------------------------*/
 
+/**
+ * task. h
+ *
+ * Macro to enter a data group critical section.
+ *
+ * \defgroup taskDATA_GROUP_ENTER_CRITICAL taskDATA_GROUP_ENTER_CRITICAL
+ * \ingroup GranularLocks
+ */
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+
+/* Using a function implementation now since the data group entering critical
+ * section needs to check for run state change. */
+    void vTaskDataGroupEnterCritical( portSPINLOCK_TYPE * pxTaskSpinlock,
+                                      portSPINLOCK_TYPE * pxISRSpinlock );
+    #define taskDATA_GROUP_ENTER_CRITICAL    vTaskDataGroupEnterCritical
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/**
+ * task. h
+ *
+ * Macro to enter a data group critical section from an interrupt.
+ *
+ * \defgroup taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR
+ * \ingroup GranularLocks
+ */
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+    #define taskDATA_GROUP_ENTER_CRITICAL_FROM_ISR( pxISRSpinlock, puxSavedInterruptStatus ) \
+    do {                                                                                     \
+        *( puxSavedInterruptStatus ) = portSET_INTERRUPT_MASK_FROM_ISR();                    \
+        {                                                                                    \
+            const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                     \
+            /* Take the ISR spinlock */                                                      \
+            portGET_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) );          \
+            /* Increment the critical nesting count */                                       \
+            portINCREMENT_CRITICAL_NESTING_COUNT( xCoreID );                                 \
+        }                                                                                    \
+    } while( 0 )
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/**
+ * task. h
+ *
+ * Macro to exit a data group critical section.
+ *
+ * \defgroup taskDATA_GROUP_EXIT_CRITICAL taskDATA_GROUP_EXIT_CRITICAL
+ * \ingroup GranularLocks
+ */
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+    #define taskDATA_GROUP_EXIT_CRITICAL( pxTaskSpinlock, pxISRSpinlock )            \
+    do {                                                                             \
+        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                 \
+        configASSERT( portGET_CRITICAL_NESTING_COUNT( xCoreID ) > 0U );              \
+        /* Release the ISR spinlock */                                               \
+        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) );  \
+        /* Release the task spinlock */                                              \
+        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxTaskSpinlock ) ); \
+        /* Decrement the critical nesting count */                                   \
+        portDECREMENT_CRITICAL_NESTING_COUNT( xCoreID );                             \
+        /* Enable interrupts only if the critical nesting count is 0 */              \
+        if( portGET_CRITICAL_NESTING_COUNT( xCoreID ) == 0 )                         \
+        {                                                                            \
+            portENABLE_INTERRUPTS();                                                 \
+        }                                                                            \
+        else                                                                         \
+        {                                                                            \
+            mtCOVERAGE_TEST_MARKER();                                                \
+        }                                                                            \
+        /* Re-enable preemption */                                                   \
+        ( void ) xTaskPreemptionEnableWithYieldStatus( NULL );                       \
+    } while( 0 )
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/**
+ * task. h
+ *
+ * Macro to exit a data group critical section from an interrupt.
+ *
+ * \defgroup taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR
+ * \ingroup GranularLocks
+ */
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+    #define taskDATA_GROUP_EXIT_CRITICAL_FROM_ISR( uxSavedInterruptStatus, pxISRSpinlock ) \
+    do {                                                                                   \
+        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                       \
+        configASSERT( portGET_CRITICAL_NESTING_COUNT( xCoreID ) > 0U );                    \
+        /* Decrement the critical nesting count */                                         \
+        portDECREMENT_CRITICAL_NESTING_COUNT( xCoreID );                                   \
+        /* Release the ISR spinlock */                                                     \
+        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) );        \
+        if( portGET_CRITICAL_NESTING_COUNT( xCoreID ) == 0 )                               \
+        {                                                                                  \
+            portCLEAR_INTERRUPT_MASK_FROM_ISR( uxSavedInterruptStatus );                   \
+        }                                                                                  \
+    } while( 0 )
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/**
+ * task. h
+ *
+ * Macros to lock a data group (task-level lock only).
+ *
+ * \defgroup taskDATA_GROUP_LOCK taskDATA_GROUP_LOCK
+ * \ingroup GranularLocks
+ */
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+    #define taskDATA_GROUP_LOCK( pxTaskSpinlock )                                              \
+    do {                                                                                       \
+        /* Disable preemption while holding the task spinlock. */                              \
+        vTaskPreemptionDisable( NULL );                                                        \
+        {                                                                                      \
+            portGET_SPINLOCK( portGET_CORE_ID(), ( portSPINLOCK_TYPE * ) ( pxTaskSpinlock ) ); \
+        }                                                                                      \
+    } while( 0 )
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/**
+ * task. h
+ *
+ * Macros to unlock a data group (task-level lock only).
+ *
+ * \defgroup taskDATA_GROUP_UNLOCK taskDATA_GROUP_UNLOCK
+ * \ingroup GranularLocks
+ */
+#if ( portUSING_GRANULAR_LOCKS == 1 )
+
+/* Release the task spinlock and re-enable preemption.
+ * Returns the yield status reported by xTaskPreemptionEnableWithYieldStatus(). */
+    BaseType_t taskDataGroupUnlock( portSPINLOCK_TYPE * pxTaskSpinlock );
+    #define taskDATA_GROUP_UNLOCK    taskDataGroupUnlock
+#endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
+
+/**
+ * task. h
+ *
+ * Macros to temporarily promote a held data group lock to a full data group
+ * critical section, and to demote it back again. A data group that is locked
+ * holds the task spinlock with preemption disabled, which keeps other tasks
+ * out but not interrupts. Promoting additionally masks interrupts and takes
+ * the ISR spinlock, so that data shared with an ISR can be updated. The
+ * critical nesting count records whether interrupts were already masked on
+ * entry, so no interrupt state has to be saved by the caller.
+ *
+ * \defgroup taskDATA_GROUP_PROMOTE_LOCK_TO_CRITICAL taskDATA_GROUP_PROMOTE_LOCK_TO_CRITICAL
+ * \ingroup GranularLocks
+ */
+#if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
+    #define taskDATA_GROUP_PROMOTE_LOCK_TO_CRITICAL( pxISRSpinlock )            \
+    do {                                                                        \
+        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();            \
+        portDISABLE_INTERRUPTS();                                               \
+        portINCREMENT_CRITICAL_NESTING_COUNT( xCoreID );                        \
+        portGET_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) ); \
+    } while( 0 )
+
+    #define taskDATA_GROUP_DEMOTE_CRITICAL_TO_LOCK( pxISRSpinlock )                 \
+    do {                                                                            \
+        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();                \
+        portRELEASE_SPINLOCK( xCoreID, ( portSPINLOCK_TYPE * ) ( pxISRSpinlock ) ); \
+        portDECREMENT_CRITICAL_NESTING_COUNT( xCoreID );                            \
+        if( portGET_CRITICAL_NESTING_COUNT( xCoreID ) == 0U )                       \
+        {                                                                           \
+            portENABLE_INTERRUPTS();                                                \
+        }                                                                           \
+    } while( 0 )
+#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+
+
 #if ( configNUMBER_OF_CORES == 1 )
     #define taskYIELD_WITHIN_API()    portYIELD_WITHIN_API()
 #else /* #if ( configNUMBER_OF_CORES == 1 ) */
@@ -4034,11 +4069,12 @@ void vTaskInternalSetTimeOutState( TimeOut_t * const pxTimeOut ) PRIVILEGED_FUNC
 
 /*
  * Checks whether a yield is required after portUNLOCK_DATA_GROUP() returns.
- * To be called while data group is locked.
+ * To be called while data group is locked or after an interrupt invokes
+ * a FreeRTOS API prior to returning to the task.
  */
 #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) )
     BaseType_t xTaskUnlockCanYield( void );
-#endif /* #if ( ( portUSING_GRANULAR_LOCKS == 1 ) && ( configNUMBER_OF_CORES > 1 ) ) */
+#endif
 
 #if ( portUSING_MPU_WRAPPERS == 1 )
 
