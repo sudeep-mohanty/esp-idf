@@ -362,26 +362,6 @@ static inline void __attribute__((always_inline)) vPortCPUReleaseMutex(portMUX_T
 
 // ------------------ Critical Sections --------------------
 
-#if CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM
-/**
- * @brief Claim thread-safe region start
- *        If claimed, vPortEnterCritical/vPortExitCritical on the current core are no-ops.
- *        Only can be used in single-core running context with interrupts disabled.
- * @note !!! Caller must guarantee thread safety between Claim and Disclaim !!!
- */
-void xPortThreadSafeClaim(void);
-
-/**
- * @brief Claim thread-safe region end
- *        Restores normal port critical behavior
- *        Only can be used in single-core running context with interrupts disabled.
- * @note !!! Caller must guarantee thread safety between Claim and Disclaim !!!
- */
-void xPortThreadSafeDisclaim(void);
-
-extern volatile bool port_xThreadSafeClaimed;
-#endif /* CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM */
-
 BaseType_t xPortEnterCriticalTimeout(portMUX_TYPE *lock, BaseType_t timeout);
 
 static inline void __attribute__((always_inline)) vPortEnterCriticalIDF(portMUX_TYPE *lock)

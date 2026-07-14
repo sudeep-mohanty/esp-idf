@@ -45,9 +45,6 @@
 #include "task.h"
 #include "timers.h"
 #include "stack_macros.h"
-#if CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM
-#include "esp_compiler.h"
-#endif
 
 /* The default definitions are only available for non-MPU ports. The
  * reason is that the stack alignment requirements vary for different
@@ -666,7 +663,7 @@ PRIVILEGED_DATA STATIC volatile BaseType_t xSchedulerRunningPerCore[ configNUMBE
     PRIVILEGED_DATA STATIC volatile BaseType_t xSchedulerRunning = pdFALSE;
 #endif /* ( ESP_PLATFORM == 1 ) && ( configNUM_CORES > 1 ) */
 PRIVILEGED_DATA STATIC volatile TickType_t xPendedTicks = ( TickType_t ) 0U;
-PRIVILEGED_DATA volatile BaseType_t xYieldPendings[ configNUMBER_OF_CORES ] = { pdFALSE };
+PRIVILEGED_DATA STATIC volatile BaseType_t xYieldPendings[ configNUMBER_OF_CORES ] = { pdFALSE };
 PRIVILEGED_DATA STATIC volatile BaseType_t xNumOfOverflows = ( BaseType_t ) 0;
 PRIVILEGED_DATA STATIC UBaseType_t uxTaskNumber = ( UBaseType_t ) 0U;
 PRIVILEGED_DATA STATIC volatile TickType_t xNextTaskUnblockTime = ( TickType_t ) 0U; /* Initialised to portMAX_DELAY before the scheduler starts. */
@@ -805,7 +802,7 @@ STATIC void prvCheckTasksWaitingTermination( void ) PRIVILEGED_FUNCTION;
  * Private helper function to remove a task from an event list. This function
  * is shared between the task context and ISR context versions.
  */
-static BaseType_t prvTaskRemoveFromEventList( const List_t * const pxEventList ) PRIVILEGED_FUNCTION;
+STATIC BaseType_t prvTaskRemoveFromEventList( const List_t * const pxEventList ) PRIVILEGED_FUNCTION;
 
 /*
  * The currently executing task is entering the Blocked state.  Add the task to
@@ -950,13 +947,6 @@ STATIC void prvAddNewTaskToReadyList( TCB_t * pxNewTCB ) PRIVILEGED_FUNCTION;
                                   UBaseType_t uxPriority,
                                   TaskHandle_t * const pxCreatedTask ) PRIVILEGED_FUNCTION;
 #endif /* #if ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) */
-
-/*
- * Helper function to enable preemption for a task and return yield status.
- */
-#if ( configUSE_TASK_PREEMPTION_DISABLE == 1 )
-    BaseType_t xTaskPreemptionEnableWithYieldStatus( const TaskHandle_t xTask ) PRIVILEGED_FUNCTION;
-#endif /* #if ( configUSE_TASK_PREEMPTION_DISABLE == 1 ) */
 
 /*
  * freertos_tasks_c_additions_init() should only be called if the user definable
@@ -3619,6 +3609,14 @@ STATIC void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
                 }
             }
         }
+    }
+
+    BaseType_t taskDataGroupUnlock( portSPINLOCK_TYPE * pxTaskSpinlock )
+    {
+        /* Release the task spinlock and re-enable preemption, returning whether
+         * re-enabling preemption requires the caller to yield. */
+        portRELEASE_SPINLOCK( portGET_CORE_ID(), pxTaskSpinlock );
+        return xTaskPreemptionEnableWithYieldStatus( NULL );
     }
 #endif /* #if ( configUSE_TASK_PREEMPTION_DISABLE == 1 ) */
 /*-----------------------------------------------------------*/
@@ -6323,7 +6321,7 @@ BaseType_t xTaskRemoveFromEventListFromISR( const List_t * const pxEventList )
 
 /*-----------------------------------------------------------*/
 
-static BaseType_t prvTaskRemoveFromEventList( const List_t * const pxEventList )
+STATIC BaseType_t prvTaskRemoveFromEventList( const List_t * const pxEventList )
 {
     TCB_t * pxUnblockedTCB;
     BaseType_t xReturn;
@@ -8017,13 +8015,6 @@ STATIC void prvResetNextTaskUnblockTime( void )
 
     void vTaskEnterCritical( void )
     {
-#if CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM
-        if( unlikely( port_xThreadSafeClaimed ) )
-        {
-            return;
-        }
-#endif
-
         traceENTER_vTaskEnterCritical();
 
         portDISABLE_INTERRUPTS();
@@ -8176,12 +8167,7 @@ STATIC void prvResetNextTaskUnblockTime( void )
 
     void vTaskExitCritical( void )
     {
-#if CONFIG_FREERTOS_PORT_THREAD_SAFE_CLAIM
-        if( unlikely( port_xThreadSafeClaimed ) )
-        {
-            return;
-        }
-#endif
+        const BaseType_t xCoreID = ( BaseType_t ) portGET_CORE_ID();
 
         traceENTER_vTaskExitCritical();
 

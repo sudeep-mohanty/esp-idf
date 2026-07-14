@@ -417,9 +417,8 @@ typedef enum
 
 /* Release the task spinlock and re-enable preemption.
  * Returns the yield status reported by xTaskPreemptionEnableWithYieldStatus(). */
-    #define taskDATA_GROUP_UNLOCK( pxTaskSpinlock )                                          \
-    ( portRELEASE_SPINLOCK( portGET_CORE_ID(), ( portSPINLOCK_TYPE * ) ( pxTaskSpinlock ) ), \
-      xTaskPreemptionEnableWithYieldStatus( NULL ) )
+    BaseType_t taskDataGroupUnlock( portSPINLOCK_TYPE * pxTaskSpinlock );
+    #define taskDATA_GROUP_UNLOCK    taskDataGroupUnlock
 #endif /* #if ( portUSING_GRANULAR_LOCKS == 1 ) */
 
 /*-----------------------------------------------------------
