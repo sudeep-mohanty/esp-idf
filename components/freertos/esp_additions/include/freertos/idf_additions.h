@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2023-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2023-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -31,6 +31,24 @@
 #endif
 /* *INDENT-ON* */
 
+/* ------------------------------------------------ Critical Sections ----------------------------------------------- */
+
+#if CONFIG_FREERTOS_SMP
+
+/*
+ * Redefines the task critical section macros of the SMP kernel to take a
+ * spinlock, as in ESP-IDF FreeRTOS. The port critical section macros accept a
+ * spinlock or no argument. The include guard of task.h keeps the kernel
+ * definitions from replacing these definitions.
+ */
+    #undef taskENTER_CRITICAL
+    #undef taskEXIT_CRITICAL
+    #define taskENTER_CRITICAL( ... )       portENTER_CRITICAL( __VA_ARGS__ )
+    #define taskEXIT_CRITICAL( ... )        portEXIT_CRITICAL( __VA_ARGS__ )
+    #define taskENTER_CRITICAL_ISR( x )     portENTER_CRITICAL_ISR( x )
+    #define taskEXIT_CRITICAL_ISR( x )      portEXIT_CRITICAL_ISR( x )
+
+#endif /* CONFIG_FREERTOS_SMP */
 
 /* -------------------------------------------------- Task Creation ------------------------------------------------- */
 
