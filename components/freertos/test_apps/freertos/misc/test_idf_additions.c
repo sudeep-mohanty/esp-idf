@@ -18,6 +18,8 @@
 #include "unity.h"
 #include "test_utils.h"
 #include "esp_freertos_hooks.h"
+#include "driver/gptimer.h"
+#include "esp_rom_sys.h"
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
@@ -491,7 +493,104 @@ TEST_CASE("IDF additions: xTaskGetCurrentTaskHandleForCore and pvTaskGetCurrentT
 
 #endif /* !CONFIG_FREERTOS_SMP */
 
-#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS && !CONFIG_FREERTOS_SMP
+/* ---------------------------------------------------------------------------------------------------------------------
+IDF additions: Task critical sections with a spinlock
+
+Purpose:
+    - Test that taskENTER/EXIT_CRITICAL() and taskENTER/EXIT_CRITICAL_ISR() accept a spinlock and serialise access to
+      shared data across cores and from an ISR
+
+Procedure:
+    - Start a timer whose ISR increments a shared counter inside taskENTER/EXIT_CRITICAL_ISR()
+    - Create one task per core. Each task increments the same counter a fixed number of times inside
+      taskENTER/EXIT_CRITICAL(), with a non-atomic read, delay and write
+    - Stop the timer once every task has finished
+
+Expected:
+    - The counter equals the task increments plus the ISR increments
+--------------------------------------------------------------------------------------------------------------------- */
+
+#define CRIT_TASK_ITERATIONS    10000
+
+static portMUX_TYPE crit_mux = portMUX_INITIALIZER_UNLOCKED;
+static volatile uint32_t crit_counter;
+static volatile uint32_t crit_isr_increments;
+
+static inline void crit_counter_increment(void)
+{
+    uint32_t value = crit_counter;
+    esp_rom_delay_us(1);
+    crit_counter = value + 1;
+}
+
+static bool crit_timer_isr(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx)
+{
+    taskENTER_CRITICAL_ISR(&crit_mux);
+    crit_counter_increment();
+    crit_isr_increments++;
+    taskEXIT_CRITICAL_ISR(&crit_mux);
+    return false;
+}
+
+static void crit_task(void *arg)
+{
+    for (int i = 0; i < CRIT_TASK_ITERATIONS; i++) {
+        taskENTER_CRITICAL(&crit_mux);
+        crit_counter_increment();
+        taskEXIT_CRITICAL(&crit_mux);
+    }
+    xTaskNotifyGive((TaskHandle_t)arg);
+    vTaskSuspend(NULL);
+}
+
+TEST_CASE("IDF additions: Task critical sections with a spinlock", "[freertos][idf_additions]")
+{
+    TaskHandle_t tasks[CONFIG_FREERTOS_NUMBER_OF_CORES];
+    gptimer_handle_t gptimer;
+    const gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1000000,
+    };
+    const gptimer_alarm_config_t alarm_config = {
+        .reload_count = 0,
+        .alarm_count = 100,
+        .flags.auto_reload_on_alarm = true,
+    };
+    const gptimer_event_callbacks_t cbs = {
+        .on_alarm = crit_timer_isr,
+    };
+
+    crit_counter = 0;
+    crit_isr_increments = 0;
+
+    TEST_ESP_OK(gptimer_new_timer(&timer_config, &gptimer));
+    TEST_ESP_OK(gptimer_register_event_callbacks(gptimer, &cbs, NULL));
+    TEST_ESP_OK(gptimer_enable(gptimer));
+    TEST_ESP_OK(gptimer_set_alarm_action(gptimer, &alarm_config));
+    TEST_ESP_OK(gptimer_start(gptimer));
+
+    for (int core = 0; core < CONFIG_FREERTOS_NUMBER_OF_CORES; core++) {
+        TEST_ASSERT_EQUAL(pdPASS, xTaskCreatePinnedToCore(crit_task, "crit", 2048, xTaskGetCurrentTaskHandle(),
+                                                          UNITY_FREERTOS_PRIORITY - 1, &tasks[core], core));
+    }
+    for (int core = 0; core < CONFIG_FREERTOS_NUMBER_OF_CORES; core++) {
+        TEST_ASSERT_NOT_EQUAL(0, ulTaskNotifyTake(pdFALSE, pdMS_TO_TICKS(5000)));
+    }
+
+    TEST_ESP_OK(gptimer_stop(gptimer));
+    TEST_ESP_OK(gptimer_disable(gptimer));
+    TEST_ESP_OK(gptimer_del_timer(gptimer));
+    for (int core = 0; core < CONFIG_FREERTOS_NUMBER_OF_CORES; core++) {
+        vTaskDelete(tasks[core]);
+    }
+    vTaskDelay(1);
+
+    TEST_ASSERT_NOT_EQUAL(0, crit_isr_increments);
+    TEST_ASSERT_EQUAL_UINT32(CRIT_TASK_ITERATIONS * CONFIG_FREERTOS_NUMBER_OF_CORES + crit_isr_increments, crit_counter);
+}
+
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 
 TEST_CASE("IDF additions: ulTaskGetIdleRunTimeCounterForCore", "[freertos][idf_additions]")
 {
@@ -504,7 +603,7 @@ TEST_CASE("IDF additions: ulTaskGetIdleRunTimeCounterForCore", "[freertos][idf_a
     }
 }
 
-#endif /* CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS && !CONFIG_FREERTOS_SMP */
+#endif /* CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS */
 
 #if !CONFIG_FREERTOS_SMP
 /*

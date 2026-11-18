@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2022-2025 Espressif Systems (Shanghai) CO LTD
+# SPDX-FileCopyrightText: 2022-2026 Espressif Systems (Shanghai) CO LTD
 # SPDX-License-Identifier: Apache-2.0
 import pytest
 from pytest_embedded import Dut
@@ -33,6 +33,7 @@ from pytest_embedded_idf.utils import idf_parametrize
         ('single_core', 'esp32p4'),
         # SMP (Preview feature, limited testing on esp32 only)
         ('smp', 'esp32'),
+        ('smp_run_time_stats', 'esp32'),
         # Flash auto-suspend (Specific feature test)
         (
             'flash_auto_suspend',

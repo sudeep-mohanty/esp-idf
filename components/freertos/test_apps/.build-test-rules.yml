@@ -18,7 +18,7 @@ components/freertos/test_apps/build_tests/orig_inc_path:
 
 components/freertos/test_apps/freertos:
   disable:
-    - if: CONFIG_NAME == "smp" and IDF_TARGET not in ["esp32"]
+    - if: CONFIG_NAME in ["smp", "smp_run_time_stats"] and IDF_TARGET not in ["esp32"]
       temporary: true
       reason: target(s) not supported yet
     - if: CONFIG_NAME == "psram" and SOC_SPIRAM_SUPPORTED != 1

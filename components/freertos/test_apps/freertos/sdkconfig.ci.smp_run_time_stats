@@ -1,0 +1,4 @@
+# Test configuration for Amazon SMP FreeRTOS with run time statistics, which the ESP-IDF idle run time additions use.
+
+CONFIG_FREERTOS_SMP=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
