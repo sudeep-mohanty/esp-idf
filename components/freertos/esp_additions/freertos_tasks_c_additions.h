@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2025 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2026 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -542,6 +542,26 @@ BaseType_t xTaskGetCoreID( TaskHandle_t xTask )
     }
 
 #endif /* ( !CONFIG_FREERTOS_SMP && ( configGENERATE_RUN_TIME_STATS == 1 ) && ( INCLUDE_xTaskGetIdleTaskHandle == 1 ) ) */
+/*-----------------------------------------------------------*/
+
+#if ( CONFIG_FREERTOS_SMP && ( configGENERATE_RUN_TIME_STATS == 1 ) && ( INCLUDE_xTaskGetIdleTaskHandle == 1 ) )
+
+    configRUN_TIME_COUNTER_TYPE ulTaskGetIdleRunTimeCounterForCore( BaseType_t xCoreID )
+    {
+        configASSERT( taskVALID_CORE_ID( xCoreID ) == pdTRUE );
+
+        return ulTaskGetRunTimeCounter( xTaskGetIdleTaskHandleForCore( xCoreID ) );
+    }
+/*----------------------------------------------------------*/
+
+    configRUN_TIME_COUNTER_TYPE ulTaskGetIdleRunTimePercentForCore( BaseType_t xCoreID )
+    {
+        configASSERT( taskVALID_CORE_ID( xCoreID ) == pdTRUE );
+
+        return ulTaskGetRunTimePercent( xTaskGetIdleTaskHandleForCore( xCoreID ) );
+    }
+
+#endif /* ( CONFIG_FREERTOS_SMP && ( configGENERATE_RUN_TIME_STATS == 1 ) && ( INCLUDE_xTaskGetIdleTaskHandle == 1 ) ) */
 /*-----------------------------------------------------------*/
 
 StackType_t * xTaskGetStackStart( TaskHandle_t xTask )
